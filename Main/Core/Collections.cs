@@ -34,14 +34,29 @@ namespace UnityInterface
                 }
             }
         }
-        private static Dictionary<object, Traverse> storge = new Dictionary<object, Traverse>();
-        public static object GetValue(this object obj, string name)
+        public static T LoadComponent<T>(this GameObject obj, string json) where T : Component
+        {
+            T v = obj.AddComponent<T>();
+            JsonConvert.DeserializeObject<T>(json).Merge(v);
+            return v;
+        }
+        private static void CheckExists(object obj)
         {
             if (!storge.ContainsKey(obj))
             {
                 storge.Add(obj, Traverse.Create(obj));
             }
+        }
+        private static Dictionary<object, Traverse> storge = new Dictionary<object, Traverse>();
+        public static object GetValue(this object obj, string name)
+        {
+            CheckExists(obj);
             return storge[obj].Field(name).GetValue();
+        }
+        public static T GetValue<T>(this object obj, string name)
+        {
+            CheckExists(obj);
+            return storge[obj].Field(name).GetValue<T>();
         }
         public static void FixType(ref object value, object from)
         {
@@ -60,20 +75,28 @@ namespace UnityInterface
         }
         public static string[] GetValueNames(this object obj)
         {
-            if (!storge.ContainsKey(obj))
-            {
-                storge.Add(obj, Traverse.Create(obj));
-            }
+            CheckExists(obj);
             return storge[obj].Fields().ToArray();
         }
         public static object SetValue(this object obj, string name, object value)
         {
-            if (!storge.ContainsKey(obj))
-            {
-                storge.Add(obj, Traverse.Create(obj));
-            }
+            CheckExists(obj);
             FixType(ref value, obj.GetValue(name));
             return storge[obj].Field(name).SetValue(value);
+        }
+        public static object AddToArray<T>(this object obj, string name, T value)
+        {
+            CheckExists(obj);
+            T[] vals = obj.GetValue<T[]>(name);
+            Add(ref vals, value);
+            return storge[obj].Field(name).SetValue(vals);
+        }
+        public static object AddToList<T>(this object obj, string name, T value)
+        {
+            CheckExists(obj);
+            List<T> vals = obj.GetValue<List<T>>(name);
+            vals.Add(value);
+            return storge[obj].Field(name).SetValue(vals);
         }
         public static void Add<T>(this T[] objs, params T[] value)
         {
@@ -100,15 +123,15 @@ namespace UnityInterface
                 Debug.LogWarning("failed to add sth in the array! Log: " + ex);
             }
         }
-        public static void Migrate<P, T>(this P parent, T target)
+        public static void Merge<P, T>(this P parent, T merged)
         {
             Traverse p = Traverse.Create(parent);
             foreach (var item in p.Fields())
             {
                 try
                 {
-                    target.SetValue(item, GetValue(p, item));
-                    if (GetValue(target, item) == GetValue(p, item))
+                    merged.SetValue(item, GetValue(p, item));
+                    if (GetValue(merged, item) == GetValue(p, item))
                     {
                         Debug.Log($"{typeof(T).Name}.{item} is equals to his  parent!");
                     }
@@ -118,10 +141,6 @@ namespace UnityInterface
                     Debug.Log($"{typeof(T).Name}.{item} doesn't exist in target!" + " Log:" + e.ToString());
                 }
             }
-        }
-        public static void Migrate<T>(this T parent, T target)
-        {
-            parent.Migrate<T, T>(target);
         }
         public static void RepeatOperations(OnSthOutputInMultiply onSthOutput, params object[][] input)
         {

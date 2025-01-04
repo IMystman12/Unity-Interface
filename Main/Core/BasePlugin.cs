@@ -10,9 +10,5 @@ namespace UnityInterface
             Harmony harmony = new Harmony("imystman12.unity.interface");
             harmony.PatchAll();
         }
-        private void Update()
-        {
-
-        }
     }
 }

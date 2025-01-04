@@ -1,16 +1,19 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using BepInEx;
 using Newtonsoft.Json;
 using UnityEngine;
+using UnityEngine.Networking;
 using Object = UnityEngine.Object;
 
 namespace UnityInterface
 {
     public static class AssetManager
     {
+        public static Dictionary<Type, Dictionary<string, object>> customedAssets = new Dictionary<Type, Dictionary<string, object>>();
         public static void ForeachAllObjects<T>(OnSthOutputInSingle happened, params string[] Exclude) where T : Object
         {
             Object[] os = GetGameAssetsFromType<T>();
@@ -166,23 +169,22 @@ namespace UnityInterface
         }
         public static AudioClip GetAudioClipFromPath(string path)
         {
-            byte[] bytes = File.ReadAllBytes(path);
-            float[] floats = new float[bytes.Length / 2];
-            for (int i = 0; i < bytes.Length; i++)
+            IEnumerator ie = Interal_GetAudioClipFromPath(path);
+            while (ie.MoveNext())
             {
-                floats[i / 2] = BitConverter.ToInt16(bytes, i) / 32767;
             }
-            AudioClip ac = AudioClip.Create(Path.GetFileNameWithoutExtension(path), bytes.Length, 1, 44100, false);
-            ac.SetData(floats, 0);
-            return ac;
+            return clip;
+        }
+        private static AudioClip clip;
+        private static IEnumerator Interal_GetAudioClipFromPath(string path)
+        {
+            UnityWebRequest request = UnityWebRequestMultimedia.GetAudioClip(path, AudioType.UNKNOWN);
+            yield return request.SendWebRequest();
+            clip = DownloadHandlerAudioClip.GetContent(request);
         }
         public static Mesh GetMeshFromPath(string path)
         {
             return JsonConvert.DeserializeObject<Mesh>(File.ReadAllText(path));
-        }
-        public static string GetPluginAssetsPath(BaseUnityPlugin bpu, string fileNameWithEx)
-        {
-            return Path.Combine(Application.streamingAssetsPath, "Projects", bpu.Info.Metadata.GUID, fileNameWithEx);
         }
     }
 }
