@@ -42,13 +42,19 @@ namespace UnityInterface
                 BuildDir(s1, out pl);
                 for (int i = 0; i < pl.Length; i++)
                 {
-                    AssetManager.AddExtraAsset(AssetManager.Texture2DToSprite( AssetManager.GetTexture2DFromPath(pl[i])));
+                    AssetManager.AddExtraAsset(AssetManager.Texture2DToSprite(AssetManager.GetTexture2DFromPath(pl[i])));
                 }
-                s1 = Path.Combine(s, typeof(Texture2D).Name);
+                s1 = Path.Combine(s, typeof(Mesh).Name);
                 BuildDir(s1, out pl);
                 for (int i = 0; i < pl.Length; i++)
                 {
-                    AssetManager.AddExtraAsset(AssetManager.GetTexture2DFromPath(pl[i]));
+                    AssetManager.AddExtraAsset(AssetManager.GetMeshFromPath(pl[i]));
+                }
+                s1 = Path.Combine(s, typeof(AssetBundle).Name);
+                BuildDir(s1, out pl);
+                for (int i = 0; i < pl.Length; i++)
+                {
+                    AssetManager.AddExtraAsset(AssetBundle.LoadFromFile(pl[i]));
                 }
             }
         }
