@@ -11,9 +11,107 @@ using Object = UnityEngine.Object;
 
 namespace UnityInterface
 {
+    public static class UnityManager
+    {
+        public static List<BaseUnityPlugin> Plugins => plugins;
+        private static List<BaseUnityPlugin> plugins = new List<BaseUnityPlugin>();
+        public static void SetupPlugin(BaseUnityPlugin plugin, PluginConfig cfg = default)
+        {
+            plugins.Add(plugin);
+            string s = AssetManager.GetProjectFolder(plugin);
+            if (cfg.autoBuild)
+            {
+                if (!Directory.Exists(s))
+                {
+                    Directory.CreateDirectory(s);
+                }
+                string s1 = Path.Combine(s, typeof(AudioClip).Name);
+                string[] pl = null;
+                BuildDir(s1, out pl);
+                for (int i = 0; i < pl.Length; i++)
+                {
+                    AssetManager.AddExtraAsset(AssetManager.GetAudioClipFromPath(pl[i]));
+                }
+                s1 = Path.Combine(s, typeof(Texture2D).Name);
+                BuildDir(s1, out pl);
+                for (int i = 0; i < pl.Length; i++)
+                {
+                    AssetManager.AddExtraAsset(AssetManager.GetTexture2DFromPath(pl[i]));
+                }
+                s1 = Path.Combine(s, typeof(Sprite).Name);
+                BuildDir(s1, out pl);
+                for (int i = 0; i < pl.Length; i++)
+                {
+                    AssetManager.AddExtraAsset(AssetManager.Texture2DToSprite( AssetManager.GetTexture2DFromPath(pl[i])));
+                }
+                s1 = Path.Combine(s, typeof(Texture2D).Name);
+                BuildDir(s1, out pl);
+                for (int i = 0; i < pl.Length; i++)
+                {
+                    AssetManager.AddExtraAsset(AssetManager.GetTexture2DFromPath(pl[i]));
+                }
+            }
+        }
+        internal static void BuildDir(string path, out string[] array)
+        {
+            array = Directory.GetFiles(path);
+            if (!Directory.Exists(path))
+            {
+                Directory.CreateDirectory(path);
+            }
+        }
+        public struct PluginConfig
+        {
+            public bool autoBuild;
+            public bool autoLoad;
+        }
+    }
     public static class AssetManager
     {
-        public static Dictionary<Type, Dictionary<string, object>> customedAssets = new Dictionary<Type, Dictionary<string, object>>();
+        public static Dictionary<Type, Dictionary<string, Object>> assets = new Dictionary<Type, Dictionary<string, Object>>();
+        public static string GetProjectFolder(BaseUnityPlugin plugin)
+        {
+            return Path.Combine(Application.streamingAssetsPath, "Projects", "Project_" + plugin.Info.Metadata.GUID);
+        }
+        public static void ReloadBuiltIn()
+        {
+            Object[] obj = Resources.FindObjectsOfTypeAll<Object>();
+            foreach (var item in obj)
+            {
+                AddAsset(item);
+            }
+        }
+        public static T Load<T>(string name) where T : Object
+        {
+            if (assets.ContainsKey(typeof(T)))
+            {
+                if (assets[typeof(T)].ContainsKey(name))
+                {
+                    return assets[typeof(T)][name] as T;
+                }
+            }
+            return null;
+        }
+        public static void AddExtraAsset(Object o)
+        {
+            AddAsset(o);
+        }
+        private static void AddAsset(Object obj)
+        {
+            Type type = obj.GetType();
+            if (!assets.ContainsKey(type))
+            {
+                assets.Add(type, new Dictionary<string, Object>());
+            }
+            if (!assets[type].ContainsKey(obj.name))
+            {
+                assets[type].Add(obj.name, obj);
+            }
+            else
+            {
+                assets[type][obj.name] = obj;
+            }
+        }
         public static void ForeachAllObjects<T>(OnSthOutputInSingle happened, params string[] Exclude) where T : Object
         {
             Object[] os = GetGameAssetsFromType<T>();

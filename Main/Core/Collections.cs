@@ -13,10 +13,9 @@ namespace UnityInterface
     public delegate void OnSthOutputInSingleWithRef(ref object arg);
     public delegate bool NeedWaiting();
     public delegate void OnSthHappening();
-    public static class SoftwareInfo
-    {
-        public static string Path => Directory.GetCurrentDirectory();
-    }
+    public delegate void OnSthOutputInMultiply<T>(params T[] args);
+    public delegate void OnSthOutputInSingle<T>(T arg);
+    public delegate void OnSthOutputInSingleWithRef<T>(ref T arg);
     public static class Collections
     {
         public class CustomYield : CustomYieldInstruction

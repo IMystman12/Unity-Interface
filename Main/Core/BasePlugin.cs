@@ -1,4 +1,5 @@
-﻿using BepInEx;
+﻿using System.Collections;
+using BepInEx;
 using HarmonyLib;
 namespace UnityInterface
 {
@@ -7,8 +8,7 @@ namespace UnityInterface
     {
         void Awake()
         {
-            Harmony harmony = new Harmony("imystman12.unity.interface");
-            harmony.PatchAll();
+            new Harmony("imystman12.unity.interface").PatchAll();
         }
     }
 }
