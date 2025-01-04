@@ -81,8 +81,36 @@ namespace UnityInterface
             public string filePath;
             public T GetInstance()
             {
-                return default;
+                if (builtInName != string.Empty)
+                {
+                    return Load<T>(builtInName);
+                }
+                return GetAssetFromPath<T>(filePath);
             }
+        }
+        public static T GetAssetFromPath<T>(string path) where T : Object
+        {
+            if (typeof(T) == typeof(AudioClip))
+            {
+                return GetAudioClipFromPath(path) as T;
+            }
+            if (typeof(T) == typeof(Texture2D))
+            {
+                return GetTexture2DFromPath(path) as T;
+            }
+            if (typeof(T) == typeof(Sprite))
+            {
+                return Texture2DToSprite(GetTexture2DFromPath(path)) as T;
+            }
+            if (typeof(T) == typeof(Mesh))
+            {
+                return GetMeshFromPath(path) as T;
+            }
+            if (typeof(T) == typeof(AssetBundle))
+            {
+                return AssetBundle.LoadFromFile(path) as T;
+            }
+            return default;
         }
         public static string GetProjectFolder(BaseUnityPlugin plugin)
         {
@@ -260,11 +288,15 @@ namespace UnityInterface
         }
         public static T[] GetGameAssetsFromType<T>() where T : Object
         {
-            return Resources.FindObjectsOfTypeAll<T>();
+            if (!assets.ContainsKey(typeof(T)))
+            {
+                return new T[0];
+            }
+            return assets[typeof(T)].Values as T[];
         }
         public static T GetGameAssetFromType<T>() where T : Object
         {
-            return Resources.FindObjectsOfTypeAll<T>()[0];
+            return GetGameAssetsFromType<T>()[0];
         }
         public static Texture2D GetTexture2DFromPath(string path)
         {
