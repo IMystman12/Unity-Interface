@@ -75,6 +75,15 @@ namespace UnityInterface
     public static class AssetManager
     {
         public static Dictionary<Type, Dictionary<string, Object>> assets = new Dictionary<Type, Dictionary<string, Object>>();
+        public struct UnityObject<T> where T : Object
+        {
+            public string builtInName;
+            public string filePath;
+            public T GetInstance()
+            {
+                return default;
+            }
+        }
         public static string GetProjectFolder(BaseUnityPlugin plugin)
         {
             return Path.Combine(Application.streamingAssetsPath, "Projects", "Project_" + plugin.Info.Metadata.GUID);
