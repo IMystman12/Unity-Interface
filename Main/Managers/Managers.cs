@@ -6,330 +6,380 @@ using System.Linq;
 using BepInEx;
 using Newtonsoft.Json;
 using UnityEngine;
+using UnityEngine.Assertions;
 using UnityEngine.Networking;
 using Object = UnityEngine.Object;
 
 namespace UnityInterface
 {
-    public static class UnityManager
+
+    [Serializable]
+    public struct UnityObject
     {
-        public static List<BaseUnityPlugin> Plugins => plugins;
-        private static List<BaseUnityPlugin> plugins = new List<BaseUnityPlugin>();
-        public static void SetupPlugin(BaseUnityPlugin plugin, PluginConfig cfg = default)
+        public string builtInName;
+        public string filePath;
+        public Object GetInstance()
         {
-            plugins.Add(plugin);
-            string s = AssetManager.GetProjectFolder(plugin);
-            if (cfg.autoBuild)
+            if (builtInName != string.Empty)
             {
-                if (!Directory.Exists(s))
-                {
-                    Directory.CreateDirectory(s);
-                }
-                string s1 = Path.Combine(s, typeof(AudioClip).Name);
-                string[] pl = null;
-                BuildDir(s1, out pl);
-                for (int i = 0; i < pl.Length; i++)
-                {
-                    AssetManager.AddExtraAsset(AssetManager.GetAudioClipFromPath(pl[i]));
-                }
-                s1 = Path.Combine(s, typeof(Texture2D).Name);
-                BuildDir(s1, out pl);
-                for (int i = 0; i < pl.Length; i++)
-                {
-                    AssetManager.AddExtraAsset(AssetManager.GetTexture2DFromPath(pl[i]));
-                }
-                s1 = Path.Combine(s, typeof(Sprite).Name);
-                BuildDir(s1, out pl);
-                for (int i = 0; i < pl.Length; i++)
-                {
-                    AssetManager.AddExtraAsset(AssetManager.Texture2DToSprite(AssetManager.GetTexture2DFromPath(pl[i])));
-                }
-                s1 = Path.Combine(s, typeof(Mesh).Name);
-                BuildDir(s1, out pl);
-                for (int i = 0; i < pl.Length; i++)
-                {
-                    AssetManager.AddExtraAsset(AssetManager.GetMeshFromPath(pl[i]));
-                }
-                s1 = Path.Combine(s, typeof(AssetBundle).Name);
-                BuildDir(s1, out pl);
-                for (int i = 0; i < pl.Length; i++)
-                {
-                    AssetManager.AddExtraAsset(AssetBundle.LoadFromFile(pl[i]));
-                }
+                return AssetManager.Load<Object>(builtInName);
             }
+            return AssetManager.GetAssetFromPath<Object>(filePath);
         }
-        internal static void BuildDir(string path, out string[] array)
+        public T GetInstance<T>() where T : Object
         {
-            array = Directory.GetFiles(path);
-            if (!Directory.Exists(path))
+            if (builtInName != string.Empty)
             {
-                Directory.CreateDirectory(path);
+                return AssetManager.Load<T>(builtInName);
             }
+            return AssetManager.GetAssetFromPath<T>(filePath);
         }
-        public struct PluginConfig
+        public static UnityObject Create(Object o)
         {
-            public bool autoBuild;
-            public bool autoLoad;
-        }
-    }
-    public static class AssetManager
-    {
-        public static Dictionary<Type, Dictionary<string, Object>> assets = new Dictionary<Type, Dictionary<string, Object>>();
-        public struct UnityObject<T> where T : Object
-        {
-            public string builtInName;
-            public string filePath;
-            public T GetInstance()
+            if (AssetManager.extras.ContainsKey(o))
             {
-                if (builtInName != string.Empty)
-                {
-                    return Load<T>(builtInName);
-                }
-                return GetAssetFromPath<T>(filePath);
+                return new UnityObject() { filePath = AssetManager.extras[o] };
             }
-        }
-        public static T GetAssetFromPath<T>(string path) where T : Object
-        {
-            if (typeof(T) == typeof(AudioClip))
+            Type type = o.GetType();
+            if (AssetManager.assets.ContainsKey(type) && AssetManager.assets[type].ContainsValue(o))
             {
-                return GetAudioClipFromPath(path) as T;
-            }
-            if (typeof(T) == typeof(Texture2D))
-            {
-                return GetTexture2DFromPath(path) as T;
-            }
-            if (typeof(T) == typeof(Sprite))
-            {
-                return Texture2DToSprite(GetTexture2DFromPath(path)) as T;
-            }
-            if (typeof(T) == typeof(Mesh))
-            {
-                return GetMeshFromPath(path) as T;
-            }
-            if (typeof(T) == typeof(AssetBundle))
-            {
-                return AssetBundle.LoadFromFile(path) as T;
+                return new UnityObject() { builtInName = o.name };
             }
             return default;
         }
-        public static string GetProjectFolder(BaseUnityPlugin plugin)
+        public class UnityObjectConverter : JsonConverter
         {
-            return Path.Combine(Application.streamingAssetsPath, "Projects", "Project_" + plugin.Info.Metadata.GUID);
-        }
-        public static void ReloadBuiltIn()
-        {
-            Object[] obj = Resources.FindObjectsOfTypeAll<Object>();
-            foreach (var item in obj)
+            public override bool CanConvert(Type objectType)
             {
-                AddAsset(item);
+                return objectType.IsInstanceOfType(typeof(Object));
+            }
+
+            public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
+            {
+                return ((UnityObject)reader.Value).GetInstance();
+            }
+            public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
+            {
+                writer.WriteValue(Create((Object)value));
             }
         }
-        public static T Load<T>(string name) where T : Object
+        public static class UnityManager
         {
-            if (assets.ContainsKey(typeof(T)))
+            public static List<BaseUnityPlugin> Plugins => plugins;
+            private static List<BaseUnityPlugin> plugins = new List<BaseUnityPlugin>();
+            public static void SetupPlugin(BaseUnityPlugin plugin, PluginConfig cfg = default)
             {
-                if (assets[typeof(T)].ContainsKey(name))
+                plugins.Add(plugin);
+                string s = AssetManager.GetProjectFolder(plugin);
+                if (cfg.autoBuild)
                 {
-                    return assets[typeof(T)][name] as T;
-                }
-            }
-            return null;
-        }
-        public static void AddExtraAsset(Object o)
-        {
-            AddAsset(o);
-        }
-        private static void AddAsset(Object obj)
-        {
-            Type type = obj.GetType();
-            if (!assets.ContainsKey(type))
-            {
-                assets.Add(type, new Dictionary<string, Object>());
-            }
-            if (!assets[type].ContainsKey(obj.name))
-            {
-                assets[type].Add(obj.name, obj);
-            }
-            else
-            {
-                assets[type][obj.name] = obj;
-            }
-        }
-        public static void ForeachAllObjects<T>(OnSthOutputInSingle happened, params string[] Exclude) where T : Object
-        {
-            Object[] os = GetGameAssetsFromType<T>();
-            for (int i = 0; i < os.Length; i++)
-            {
-                if (!Exclude.Contains(os[i].name))
-                {
-                    happened.Invoke(os[i]);
-                }
-            }
-            Debug.LogWarning("No global value found! Return null!");
-        }
-        public static List<object> GetAllObjectWithoutExclude<T>(params string[] Exclude) where T : Object
-        {
-            List<object> ret = null;
-            ForeachAllObjects<T>((object obj) =>
-            {
-                try
-                {
-                    if (!Exclude.Contains(((Object)obj).name))
+                    if (!Directory.Exists(s))
                     {
-                        ret.Add(obj);
+                        Directory.CreateDirectory(s);
+                    }
+                    string s1 = Path.Combine(s, typeof(AudioClip).Name);
+                    string[] pl = null;
+                    BuildDir(s1, out pl);
+                    for (int i = 0; i < pl.Length; i++)
+                    {
+                        AssetManager.AddExtraAsset(AssetManager.GetAudioClipFromPath(pl[i]));
+                    }
+                    s1 = Path.Combine(s, typeof(Texture2D).Name);
+                    BuildDir(s1, out pl);
+                    for (int i = 0; i < pl.Length; i++)
+                    {
+                        AssetManager.AddExtraAsset(AssetManager.GetTexture2DFromPath(pl[i]));
+                    }
+                    s1 = Path.Combine(s, typeof(Sprite).Name);
+                    BuildDir(s1, out pl);
+                    for (int i = 0; i < pl.Length; i++)
+                    {
+                        AssetManager.AddExtraAsset(AssetManager.Texture2DToSprite(AssetManager.GetTexture2DFromPath(pl[i])));
+                    }
+                    s1 = Path.Combine(s, typeof(Mesh).Name);
+                    BuildDir(s1, out pl);
+                    for (int i = 0; i < pl.Length; i++)
+                    {
+                        AssetManager.AddExtraAsset(AssetManager.GetMeshFromPath(pl[i]));
+                    }
+                    s1 = Path.Combine(s, typeof(AssetBundle).Name);
+                    BuildDir(s1, out pl);
+                    for (int i = 0; i < pl.Length; i++)
+                    {
+                        AssetManager.AddExtraAsset(AssetBundle.LoadFromFile(pl[i]));
                     }
                 }
-                catch (Exception ex)
+            }
+            internal static void BuildDir(string path, out string[] array)
+            {
+                array = Directory.GetFiles(path);
+                if (!Directory.Exists(path))
                 {
-                    Debug.LogWarning("GetAllObjectWithoutExclude failed! Log: " + ex);
+                    Directory.CreateDirectory(path);
                 }
-            }, Exclude);
-            return ret;
+            }
+            public struct PluginConfig
+            {
+                public bool autoBuild;
+                public bool autoLoad;
+            }
         }
-        public static object GetGlobalValue<T>(string name, params string[] Exclude) where T : Object
+        public static class AssetManager
         {
-            object ret = null;
-            ForeachAllObjects<T>((object obj) =>
-               {
-                   try
+            public static Dictionary<Type, Dictionary<string, Object>> assets = new Dictionary<Type, Dictionary<string, Object>>();
+            public static Dictionary<Object, string> extras = new Dictionary<Object, string>();
+            public static T GetAssetFromPath<T>(string path) where T : Object
+            {
+                if (typeof(T) == typeof(AudioClip))
+                {
+                    return GetAudioClipFromPath(path) as T;
+                }
+                if (typeof(T) == typeof(Texture2D))
+                {
+                    return GetTexture2DFromPath(path) as T;
+                }
+                if (typeof(T) == typeof(Sprite))
+                {
+                    return Texture2DToSprite(GetTexture2DFromPath(path)) as T;
+                }
+                if (typeof(T) == typeof(Mesh))
+                {
+                    return GetMeshFromPath(path) as T;
+                }
+                if (typeof(T) == typeof(AssetBundle))
+                {
+                    return AssetBundle.LoadFromFile(path) as T;
+                }
+                return default;
+            }
+            public static string GetProjectFolder(BaseUnityPlugin plugin)
+            {
+                return Path.Combine(Application.streamingAssetsPath, "Projects", "Project_" + plugin.Info.Metadata.GUID);
+            }
+            public static void ReloadBuiltIn()
+            {
+                Object[] obj = Resources.FindObjectsOfTypeAll<Object>();
+                foreach (var item in obj)
+                {
+                    AddAsset(item);
+                }
+            }
+            public static T Load<T>(string name) where T : Object
+            {
+                if (assets.ContainsKey(typeof(T)))
+                {
+                    if (assets[typeof(T)].ContainsKey(name))
+                    {
+                        return assets[typeof(T)][name] as T;
+                    }
+                }
+                return null;
+            }
+            public static void AddExtraAsset(Object o)
+            {
+                AddAsset(o);
+            }
+            private static void AddAsset(Object obj)
+            {
+                Type type = obj.GetType();
+                if (!assets.ContainsKey(type))
+                {
+                    assets.Add(type, new Dictionary<string, Object>());
+                }
+                if (!assets[type].ContainsKey(obj.name))
+                {
+                    assets[type].Add(obj.name, obj);
+                }
+                else
+                {
+                    assets[type][obj.name] = obj;
+                }
+            }
+            public static void ForeachAllObjects<T>(OnSthOutputInSingle happened, params string[] Exclude) where T : Object
+            {
+                Object[] os = GetGameAssetsFromType<T>();
+                for (int i = 0; i < os.Length; i++)
+                {
+                    if (!Exclude.Contains(os[i].name))
+                    {
+                        happened.Invoke(os[i]);
+                    }
+                }
+                Debug.LogWarning("No global value found! Return null!");
+            }
+            public static List<object> GetAllObjectWithoutExclude<T>(params string[] Exclude) where T : Object
+            {
+                List<object> ret = null;
+                ForeachAllObjects<T>((object obj) =>
+                {
+                    try
+                    {
+                        if (!Exclude.Contains(((Object)obj).name))
+                        {
+                            ret.Add(obj);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.LogWarning("GetAllObjectWithoutExclude failed! Log: " + ex);
+                    }
+                }, Exclude);
+                return ret;
+            }
+            public static object GetGlobalValue<T>(string name, params string[] Exclude) where T : Object
+            {
+                object ret = null;
+                ForeachAllObjects<T>((object obj) =>
                    {
-                       ret = obj.GetValue(name);
-                   }
-                   catch (Exception ex)
+                       try
+                       {
+                           ret = obj.GetValue(name);
+                       }
+                       catch (Exception ex)
+                       {
+                           Debug.LogWarning("GetGlobalValue failed! Log: " + ex);
+                       }
+                   }, Exclude);
+                return ret;
+            }
+            public static void SetGlobalValue<T>(string name, object newValue, params string[] Exclude) where T : Object
+            {
+                ForeachAllObjects<T>((object obj) =>
                    {
-                       Debug.LogWarning("GetGlobalValue failed! Log: " + ex);
-                   }
-               }, Exclude);
-            return ret;
-        }
-        public static void SetGlobalValue<T>(string name, object newValue, params string[] Exclude) where T : Object
-        {
-            ForeachAllObjects<T>((object obj) =>
-               {
-                   try
+                       try
+                       {
+                           obj.SetValue(name, newValue);
+                       }
+                       catch (Exception ex)
+                       {
+                           Debug.LogWarning("SetGlobalValue failed! Log: " + ex);
+                       }
+                   }, Exclude);
+            }
+            public static void AddGlobalValuesToList<T, O>(string name, List<O> valuesToAdd, params string[] Exclude) where T : Object
+            {
+                ForeachAllObjects<T>((object obj) =>
                    {
-                       obj.SetValue(name, newValue);
-                   }
-                   catch (Exception ex)
+                       try
+                       {
+                           (obj.GetValue(name) as List<O>).AddRange(valuesToAdd);
+                       }
+                       catch (Exception ex)
+                       {
+                           Debug.LogWarning("AddGlobalValuesToList failed! Log: " + ex);
+                       }
+                   }, Exclude);
+            }
+            public static void AddGlobalValueToList<T, O>(string name, O valueToAdd, params string[] Exclude) where T : Object
+            {
+                ForeachAllObjects<T>((object obj) =>
                    {
-                       Debug.LogWarning("SetGlobalValue failed! Log: " + ex);
-                   }
-               }, Exclude);
-        }
-        public static void AddGlobalValuesToList<T, O>(string name, List<O> valuesToAdd, params string[] Exclude) where T : Object
-        {
-            ForeachAllObjects<T>((object obj) =>
-               {
-                   try
-                   {
-                       (obj.GetValue(name) as List<O>).AddRange(valuesToAdd);
-                   }
-                   catch (Exception ex)
-                   {
-                       Debug.LogWarning("AddGlobalValuesToList failed! Log: " + ex);
-                   }
-               }, Exclude);
-        }
-        public static void AddGlobalValueToList<T, O>(string name, O valueToAdd, params string[] Exclude) where T : Object
-        {
-            ForeachAllObjects<T>((object obj) =>
-               {
-                   try
-                   {
-                       (obj.GetValue(name) as List<O>).Add(valueToAdd);
-                   }
-                   catch (Exception ex)
-                   {
-                       Debug.LogWarning("AddGlobalValueToList failed! Log: " + ex);
-                   }
-               }, Exclude);
-        }
+                       try
+                       {
+                           (obj.GetValue(name) as List<O>).Add(valueToAdd);
+                       }
+                       catch (Exception ex)
+                       {
+                           Debug.LogWarning("AddGlobalValueToList failed! Log: " + ex);
+                       }
+                   }, Exclude);
+            }
 
-        public static void AddGlobalValuesToArray<T, O>(string name, List<O> valuesToAdd, params string[] Exclude) where T : Object
-        {
-            ForeachAllObjects<T>((object obj) =>
-               {
-                   try
-                   {
-                       O[] ary = obj.GetValue(name) as O[];
-                       Collections.Add(ref ary, valuesToAdd.ToArray());
-                   }
-                   catch (Exception ex)
-                   {
-                       Debug.LogWarning("AddGlobalValuesToArray failed! Log: " + ex);
-                   }
-               }, Exclude);
-        }
-        public static void AddGlobalValueToArray<T, O>(string name, O valueToAdd, params string[] Exclude) where T : Object
-        {
-            ForeachAllObjects<T>((object obj) =>
-               {
-                   try
-                   {
-                       O[] ary = obj.GetValue(name) as O[];
-                       Collections.Add(ref ary, valueToAdd);
-                   }
-                   catch (Exception ex)
-                   {
-                       Debug.LogWarning("AddGlobalValueToArray failed! Log: " + ex);
-                   }
-               }, Exclude);
-        }
-        public static T GetGameAssetFromName<T>(string name) where T : Object
-        {
-            foreach (var item in GetGameAssetsFromType<T>())
+            public static void AddGlobalValuesToArray<T, O>(string name, List<O> valuesToAdd, params string[] Exclude) where T : Object
             {
-                if (item.name == name)
+                ForeachAllObjects<T>((object obj) =>
+                   {
+                       try
+                       {
+                           O[] ary = obj.GetValue(name) as O[];
+                           Collections.Add(ref ary, valuesToAdd.ToArray());
+                       }
+                       catch (Exception ex)
+                       {
+                           Debug.LogWarning("AddGlobalValuesToArray failed! Log: " + ex);
+                       }
+                   }, Exclude);
+            }
+            public static void AddGlobalValueToArray<T, O>(string name, O valueToAdd, params string[] Exclude) where T : Object
+            {
+                ForeachAllObjects<T>((object obj) =>
+                   {
+                       try
+                       {
+                           O[] ary = obj.GetValue(name) as O[];
+                           Collections.Add(ref ary, valueToAdd);
+                       }
+                       catch (Exception ex)
+                       {
+                           Debug.LogWarning("AddGlobalValueToArray failed! Log: " + ex);
+                       }
+                   }, Exclude);
+            }
+            public static T GetGameAssetFromName<T>(string name) where T : Object
+            {
+                foreach (var item in GetGameAssetsFromType<T>())
                 {
-                    return (T)item;
+                    if (item.name == name)
+                    {
+                        return (T)item;
+                    }
                 }
+                return default;
             }
-            return default;
-        }
-        public static T[] GetGameAssetsFromType<T>() where T : Object
-        {
-            if (!assets.ContainsKey(typeof(T)))
+            public static T[] GetGameAssetsFromType<T>() where T : Object
             {
-                return new T[0];
+                if (!assets.ContainsKey(typeof(T)))
+                {
+                    return new T[0];
+                }
+                return assets[typeof(T)].Values as T[];
             }
-            return assets[typeof(T)].Values as T[];
-        }
-        public static T GetGameAssetFromType<T>() where T : Object
-        {
-            return GetGameAssetsFromType<T>()[0];
-        }
-        public static Texture2D GetTexture2DFromPath(string path)
-        {
-            Texture2D t = new Texture2D(256, 256);
-            if (t.LoadImage(File.ReadAllBytes(path)))
+            public static T GetGameAssetFromType<T>() where T : Object
             {
-                return t;
+                return GetGameAssetsFromType<T>()[0];
             }
-            Debug.LogWarning("Could not Get texture from path");
-            return null;
-        }
-        public static Sprite Texture2DToSprite(Texture2D texture)
-        {
-            return Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), Vector2.one * 0.5f);
-        }
-        public static AudioClip GetAudioClipFromPath(string path)
-        {
-            IEnumerator ie = Interal_GetAudioClipFromPath(path);
-            while (ie.MoveNext())
+            public static Texture2D GetTexture2DFromPath(string path)
             {
+                Texture2D t = new Texture2D(256, 256);
+                if (t.LoadImage(File.ReadAllBytes(path)))
+                {
+                    extras.Add(t, path);
+                    return t;
+                }
+                Debug.LogWarning("Could not Get texture from path");
+                return null;
             }
-            return clip;
-        }
-        private static AudioClip clip;
-        private static IEnumerator Interal_GetAudioClipFromPath(string path)
-        {
-            UnityWebRequest request = UnityWebRequestMultimedia.GetAudioClip(path, AudioType.UNKNOWN);
-            yield return request.SendWebRequest();
-            clip = DownloadHandlerAudioClip.GetContent(request);
-        }
-        public static Mesh GetMeshFromPath(string path)
-        {
-            return JsonConvert.DeserializeObject<Mesh>(File.ReadAllText(path));
+            public static Sprite Texture2DToSprite(Texture2D texture)
+            {
+                Sprite s = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), Vector2.one * 0.5f);
+                if (extras.ContainsKey(texture))
+                {
+
+                }
+                return s;
+            }
+            public static AudioClip GetAudioClipFromPath(string path)
+            {
+                IEnumerator ie = Interal_GetAudioClipFromPath(path);
+                while (ie.MoveNext())
+                {
+                }
+                extras.Add(clip, path);
+                return clip;
+            }
+            private static AudioClip clip;
+            private static IEnumerator Interal_GetAudioClipFromPath(string path)
+            {
+                UnityWebRequest request = UnityWebRequestMultimedia.GetAudioClip(path, AudioType.UNKNOWN);
+                yield return request.SendWebRequest();
+                clip = DownloadHandlerAudioClip.GetContent(request);
+            }
+            public static Mesh GetMeshFromPath(string path)
+            {
+                Mesh mesh = JsonConvert.DeserializeObject<Mesh>(File.ReadAllText(path));
+                extras.Add(mesh, path);
+                return mesh;
+            }
         }
     }
 }
