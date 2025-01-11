@@ -6,7 +6,6 @@ using System.Linq;
 using BepInEx;
 using Newtonsoft.Json;
 using UnityEngine;
-using UnityEngine.Assertions;
 using UnityEngine.Networking;
 using Object = UnityEngine.Object;
 
@@ -63,7 +62,7 @@ namespace UnityInterface
                 writer.WriteValue(Create((Object)value));
             }
         }
-        public static class UnityManager
+        public static class PluginManager
         {
             public static List<BaseUnityPlugin> Plugins => plugins;
             private static List<BaseUnityPlugin> plugins = new List<BaseUnityPlugin>();

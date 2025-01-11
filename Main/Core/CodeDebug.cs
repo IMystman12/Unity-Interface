@@ -1,4 +1,6 @@
+using Newtonsoft.Json;
 using UnityEngine;
+using static UnityInterface.UnityObject;
 
 namespace UnityInterface
 {
@@ -9,6 +11,21 @@ namespace UnityInterface
         public void Update()
         {
             rt.anchoredPosition += moveDelta * DebugController.arrowDelta_XY;
+        }
+    }
+    public class DEBUGGER_JSON_OBJ : MonoBehaviour
+    {
+        public string j;
+        public Object o;
+        public bool p;
+        public void Update()
+        {
+            if (p)
+            {
+                p = false;
+                j = JsonConvert.SerializeObject(o, new UnityObjectConverter());
+                Debug.Log(j);
+            }
         }
     }
     public static class DebugController
