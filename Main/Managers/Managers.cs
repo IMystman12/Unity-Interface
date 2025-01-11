@@ -11,7 +11,6 @@ using Object = UnityEngine.Object;
 
 namespace UnityInterface
 {
-
     [Serializable]
     public struct UnityObject
     {
