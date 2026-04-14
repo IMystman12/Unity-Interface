@@ -43,8 +43,8 @@ namespace UnityInterface
             AssetManager.AddLoader(new MeshLoader());
             AssetManager.AddLoader(new AssetBundleLoader());
 
-            PluginManager.InjectPluginDLLs();
             yield return null;
+            PluginManager.InjectPluginDLLs();
             PluginManager.LoadAllPlugins();
 
             DEBUGGER.StartTest();

@@ -43,8 +43,7 @@ namespace UnityInterface
         /// <returns></returns>
         public static string GetProjectFolder(BaseUnityPlugin plugin) => GetProjectFolder(plugin.Info.Metadata.GUID);
 
-        internal static List<BaseUnityPlugin> queueToLoad = new List<BaseUnityPlugin>();
-        internal static List<BaseUnityPlugin> queueToGenerate = new List<BaseUnityPlugin>();
+        internal static List<BaseUnityPlugin> queueToLoad = new List<BaseUnityPlugin>(), queueToGenerate = new List<BaseUnityPlugin>(), queueRequiredReference = new List<BaseUnityPlugin>();
         public static void AddToLoad(this BaseUnityPlugin plugin) => queueToLoad.Add(plugin);
         public static void GenerateAssetFolders(this BaseUnityPlugin plugin)
         {
@@ -55,6 +54,17 @@ namespace UnityInterface
             else
             {
                 Debug.Log($"{plugin.Info.Metadata.Name}, You must AddToQueueToLoad and then you be allowed to GenerateAssetFolders");
+            }
+        }
+        public static void GenerateReferenceAssets(this BaseUnityPlugin plugin)
+        {
+            if (queueToGenerate.Contains(plugin))
+            {
+                queueRequiredReference.Add(plugin);
+            }
+            else
+            {
+                Debug.Log($"{plugin.Info.Metadata.Name}, You must GenerateAssetFolders and then you be allowed to GenerateAssetFolders");
             }
         }
         internal static void Log(string log)
@@ -93,11 +103,22 @@ namespace UnityInterface
                     Log(e.ToString());
                 }
             }
-            types = types.Where(a => a != null).ToList();
-            foreach (var itm in types.Where(a => !a.FullName.Contains("Unity.")).Where(b => b != null && !b.IsAbstract && typeof(ScriptableObject).IsAssignableFrom(b)))
+
+            List<Type> result = new List<Type>();
+            foreach (var a in types)
             {
-                foundedScriptableObjectTypes.Add(itm);
+                if (a != null)
+                {
+                    result.Add(a);
+                    if (typeof(ScriptableObject).IsAssignableFrom(a) && !a.IsAbstract && !a.Name.Contains("Unity."))
+                    {
+                        Log($"ScriptableObject Type found:{a}");
+                        foundedScriptableObjectTypes.Add(a);
+                    }
+                }
             }
+            types = result;
+
             Log($"Founded total types count: {types.Count} and ScriptableObject types count: {foundedScriptableObjectTypes.Count}.");
         }
         private static void LoadSpecificedAssets(BaseUnityPlugin plugin)
@@ -139,9 +160,22 @@ namespace UnityInterface
                         if (queueToGenerate.Contains(plugin) && !File.Exists(templatePath))
                         {
                             scriptableObject = ScriptableObject.CreateInstance(itmType);
-                            File.WriteAllText(templatePath, AssetManager.ReplaceInstanceIDs(JsonUtility.ToJson(scriptableObject), true));
+                            File.WriteAllText(templatePath, AssetManager.ReplaceInstanceIDs(itmType, JsonUtility.ToJson(scriptableObject), true));
                         }
-                        foreach (var itmPath in Collections.GetAllFiles(curPath, ".json").Where(a => "Template" != Path.GetFileNameWithoutExtension(a)))
+
+                        templatePath = Path.Combine(curPath, "References");
+                        if (queueRequiredReference.Contains(plugin) && !Directory.Exists(templatePath))
+                        {
+                            string s;
+                            Directory.CreateDirectory(templatePath);
+                            foreach (var itm in Resources.FindObjectsOfTypeAll(itmType))
+                            {
+                                s = Path.Combine(templatePath, $"Reference_{itm.name}.json");
+                                File.WriteAllText(s, AssetManager.ReplaceInstanceIDs(itmType, JsonUtility.ToJson(itm), true));
+                            }
+                        }
+
+                        foreach (var itmPath in Collections.GetAllFiles(curPath, ".json").Where(a => "Template" != Path.GetFileNameWithoutExtension(a) && !a.Contains(Path.Combine(curPath, "References"))))
                         {
                             scriptableObject = ScriptableObject.CreateInstance(itmType);
                             scriptableObject.name = Path.GetFileNameWithoutExtension(itmPath);
@@ -162,9 +196,9 @@ namespace UnityInterface
                     curPath = Path.Combine(startPath, itmType.Name);
                     if (CheckDirectory(curPath, plugin))
                     {
-                        foreach (var itmPath in Collections.GetAllFiles(curPath).Where(a => "Template" != Path.GetFileNameWithoutExtension(a)))
+                        foreach (var itmPath in Collections.GetAllFiles(curPath, ".json").Where(a => "Template" != Path.GetFileNameWithoutExtension(a) && !a.Contains(Path.Combine(curPath, "References"))))
                         {
-                            JsonUtility.FromJsonOverwrite(AssetManager.ReplaceInstanceIDs(File.ReadAllText(itmPath), false), AssetManager.loadedAssets[itmType][Path.GetFileNameWithoutExtension(itmPath)]);
+                            JsonUtility.FromJsonOverwrite(AssetManager.ReplaceInstanceIDs(itmType, File.ReadAllText(itmPath), false), AssetManager.loadedAssets[itmType][Path.GetFileNameWithoutExtension(itmPath)]);
                         }
                     }
                 }
@@ -240,14 +274,15 @@ namespace UnityInterface
 
         public static void SetAsPrefab(GameObject prefab) => prefab.transform.SetParent(prefabParent);
         internal static bool serMod;
-        public static string ReplaceInstanceIDs(string json, bool ser)
+        public static string ReplaceInstanceIDs(Type type, string json, bool ser)
         {
             serMod = ser;
-            return ReplaceToken(JToken.Parse(json)).ToString(Formatting.Indented);
+            return ReplaceToken(type, JToken.Parse(json)).ToString(Formatting.Indented);
         }
 
-        private static JToken ReplaceToken(JToken token)
+        private static JToken ReplaceToken(Type type, JToken token)
         {
+            Type fieldType;
             if (token is JObject obj)
             {
                 int id;
@@ -255,29 +290,52 @@ namespace UnityInterface
                 foreach (var prop in obj.Properties())
                 {
                     propVal = prop.Value.ToString();
-                    if (prop.Name == "m_FileID")
+                    if (typeof(Object).IsAssignableFrom(type))
                     {
-                        if (serMod)
+                        if (prop.Name == "m_FileID")
                         {
-                            id = int.Parse(propVal);
-                            prop.Value = (id == 0) ? "null" : Resources.InstanceIDToObject(id).name;
+                            if (serMod)
+                            {
+                                id = int.Parse(propVal);
+                                prop.Value = (id == 0) ? "null" : Resources.InstanceIDToObject(id).name;
+                            }
+                            else
+                            {
+                                prop.Value = (propVal == "null") ? 0 : Resources.Load(propVal, type).GetInstanceID();
+                            }
+                        }
+                    }
+                    fieldType = type.GetField(prop.Name)?.FieldType;
+                    if (fieldType != null)
+                    {
+                        if (fieldType.IsEnum)
+                        {
+                            if (serMod)
+                            {
+                                id = int.Parse(propVal);
+                                prop.Value = Enum.ToObject(fieldType, id).ToString();
+                            }
+                            else
+                            {
+                                prop.Value = (int)propVal.ToEnum(fieldType);
+                            }
                         }
                         else
                         {
-                            prop.Value = (propVal == "null") ? 0 : Resources.Load(propVal).GetInstanceID();
+                            ReplaceToken(fieldType, prop.Value);
                         }
-                    }
-                    else
-                    {
-                        ReplaceToken(prop.Value);
                     }
                 }
             }
             else if (token is JArray arr)
             {
-                foreach (var item in arr)
+                fieldType = type.GetElementType();
+                if (fieldType != null)
                 {
-                    ReplaceToken(item);
+                    foreach (var item in arr)
+                    {
+                        ReplaceToken(fieldType, item);
+                    }
                 }
             }
             return token;
