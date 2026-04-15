@@ -10,6 +10,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.Networking;
+using static UnityEngine.Networking.UnityWebRequest;
 using Object = UnityEngine.Object;
 
 namespace UnityInterface
@@ -95,7 +96,7 @@ namespace UnityInterface
             {
                 try
                 {
-                    types.AddRange(Assembly.LoadFile(item).GetTypes().Where(a => !types.Contains(a)));
+                    types.AddRange(Assembly.LoadFrom(item).GetTypes());
                     Log($"DLL:{Path.GetFileName(item)} loaded successfully!");
                 }
                 catch (Exception e)
@@ -104,22 +105,19 @@ namespace UnityInterface
                 }
             }
 
-            List<Type> result = new List<Type>();
-            foreach (var a in types)
-            {
-                if (a != null)
-                {
-                    result.Add(a);
-                    if (typeof(ScriptableObject).IsAssignableFrom(a) && !a.IsAbstract && !a.Name.Contains("Unity."))
-                    {
-                        Log($"ScriptableObject Type found:{a}");
-                        foundedScriptableObjectTypes.Add(a);
-                    }
-                }
-            }
-            types = result;
+            List<Type> result = types;
+            types.Clear();
+            result.ForEach(a => AddType(a));
 
             Log($"Founded total types count: {types.Count} and ScriptableObject types count: {foundedScriptableObjectTypes.Count}.");
+        }
+        public static void AddType(Type type)
+        {
+            types.Add(type);
+            if (typeof(ScriptableObject).IsAssignableFrom(a) && !a.IsAbstract && !a.FullName.Contains("Unity."))
+            {
+                foundedScriptableObjectTypes.Add(a);
+            }
         }
         private static void LoadSpecificedAssets(BaseUnityPlugin plugin)
         {
@@ -282,7 +280,7 @@ namespace UnityInterface
 
         private static JToken ReplaceToken(Type type, JToken token)
         {
-            Type fieldType;
+            Type fieldType, objType;
             if (token is JObject obj)
             {
                 int id;
@@ -290,9 +288,19 @@ namespace UnityInterface
                 foreach (var prop in obj.Properties())
                 {
                     propVal = prop.Value.ToString();
-                    if (typeof(Object).IsAssignableFrom(type))
+                    fieldType = type.GetField(prop.Name)?.FieldType;
+
+                    if (prop.Name == "m_FileID")
                     {
-                        if (prop.Name == "m_FileID")
+                        if (typeof(Object).IsAssignableFrom(type))
+                        {
+                            objType = type;
+                        }
+                        else
+                        {
+                            objType = fieldType;
+                        }
+                        if (objType != null)
                         {
                             if (serMod)
                             {
@@ -305,7 +313,7 @@ namespace UnityInterface
                             }
                         }
                     }
-                    fieldType = type.GetField(prop.Name)?.FieldType;
+
                     if (fieldType != null)
                     {
                         if (fieldType.IsEnum)
@@ -326,6 +334,7 @@ namespace UnityInterface
                         }
                     }
                 }
+
             }
             else if (token is JArray arr)
             {
