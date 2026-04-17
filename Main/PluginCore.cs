@@ -35,16 +35,10 @@ namespace UnityInterface
         }
         IEnumerator Start()
         {
+            PluginManager.InjectPluginDLLs();
             yield return new WaitForBuiltInResourceLoaded();
 
-            AssetManager.AddLoader(new Texture2DLoader());
-            AssetManager.AddLoader(new SpriteLoader());
-            AssetManager.AddLoader(new AudioClipLoader());
-            AssetManager.AddLoader(new MeshLoader());
-            AssetManager.AddLoader(new AssetBundleLoader());
-
             yield return null;
-            PluginManager.InjectPluginDLLs();
             PluginManager.LoadAllPlugins();
 
             DEBUGGER.StartTest();

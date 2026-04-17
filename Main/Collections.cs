@@ -65,5 +65,21 @@ namespace UnityInterface
         [Obsolete("Use List<T>.Foreach() instead!", true)] public static void Foreach() => throw new Exception("It's unless!");
         public static T[] FindWithInactiveAll<T>(this UnityEngine.Object obj, string name) where T : UnityEngine.Object => GameObject.FindObjectsOfType<T>(true).Where(a => a.name == name).ToArray();
         public static T FindWithInactive<T>(this UnityEngine.Object obj, string name) where T : UnityEngine.Object => GameObject.FindObjectsOfType<T>(true).Where(a => a.name == name).First();
+        public static T[] NullCheck<T>(this T[] array)
+        {
+            List<T> result = new List<T>();
+            foreach (var item in array)
+            {
+                if (item != null)
+                {
+                    result.Add(item);
+                }
+            }
+            return result.ToArray();
+        }
+        public static T[] UniqueCheck<T>(this T[] array) => NullCheck(array).Distinct().ToArray();
+        public static bool ContainsInterface(this Type interfaceType, Type typeBase) => typeBase.GetInterfaces().Any(a => a.IsGenericType && a.GetGenericTypeDefinition() == interfaceType);
+        public static Type GetConstGenericedType(this Type typeBase, Type interfaceType) => typeBase.GetInterfaces().Where(a => a.IsGenericType && a.GetGenericTypeDefinition() == interfaceType).FirstOrDefault()?.GetGenericArguments()?.FirstOrDefault();
+        public static bool ContainsAttribute(this Type typeBase, Type attributeType) => typeBase.GetCustomAttributes(true).Any(a => attributeType.IsAssignableFrom(a.GetType()));
     }
 }

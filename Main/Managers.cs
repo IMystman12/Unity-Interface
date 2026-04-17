@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using BepInEx;
 using BepInEx.Configuration;
 using HarmonyLib;
@@ -10,11 +9,15 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.Networking;
-using static UnityEngine.Networking.UnityWebRequest;
 using Object = UnityEngine.Object;
 
 namespace UnityInterface
 {
+    [AttributeUsage(AttributeTargets.Class)]
+    public class SkipScanning : Attribute
+    {
+
+    }
     public static class PluginManager
     {
         #region"Done"
@@ -45,10 +48,16 @@ namespace UnityInterface
         public static string GetProjectFolder(BaseUnityPlugin plugin) => GetProjectFolder(plugin.Info.Metadata.GUID);
 
         internal static List<BaseUnityPlugin> queueToLoad = new List<BaseUnityPlugin>(), queueToGenerate = new List<BaseUnityPlugin>(), queueRequiredReference = new List<BaseUnityPlugin>();
-        public static void AddToLoad(this BaseUnityPlugin plugin) => queueToLoad.Add(plugin);
+        public static void AddToLoad(this BaseUnityPlugin plugin)
+        {
+            if (!queueToLoad.Contains(plugin))
+            {
+                queueToLoad.Add(plugin);
+            }
+        }
         public static void GenerateAssetFolders(this BaseUnityPlugin plugin)
         {
-            if (queueToLoad.Contains(plugin))
+            if (queueToLoad.Contains(plugin) && !queueToGenerate.Contains(plugin))
             {
                 queueToGenerate.Add(plugin);
             }
@@ -59,7 +68,7 @@ namespace UnityInterface
         }
         public static void GenerateReferenceAssets(this BaseUnityPlugin plugin)
         {
-            if (queueToGenerate.Contains(plugin))
+            if (queueToGenerate.Contains(plugin) && !queueRequiredReference.Contains(plugin))
             {
                 queueRequiredReference.Add(plugin);
             }
@@ -91,32 +100,39 @@ namespace UnityInterface
         }
         internal static void InjectPluginDLLs()
         {
-            types.AddRange(AppDomain.CurrentDomain.GetAssemblies().SelectMany(a => a.GetTypes()));
-            foreach (var item in Collections.GetAllFiles(Path.Combine(Directory.GetCurrentDirectory(), "BepInEx", "plugins"), ".dll"))
-            {
-                try
-                {
-                    types.AddRange(Assembly.LoadFrom(item).GetTypes());
-                    Log($"DLL:{Path.GetFileName(item)} loaded successfully!");
-                }
-                catch (Exception e)
-                {
-                    Log(e.ToString());
-                }
-            }
-
-            List<Type> result = types;
-            types.Clear();
-            result.ForEach(a => AddType(a));
-
+            AddType(AppDomain.CurrentDomain.GetAssemblies().SelectMany(a => a.GetTypes()).ToArray().UniqueCheck());
             Log($"Founded total types count: {types.Count} and ScriptableObject types count: {foundedScriptableObjectTypes.Count}.");
         }
-        public static void AddType(Type type)
+        public static void AddType<T>() => AddType(typeof(T));
+        public static void AddType(params Type[] typez)
         {
-            types.Add(type);
-            if (typeof(ScriptableObject).IsAssignableFrom(a) && !a.IsAbstract && !a.FullName.Contains("Unity."))
+            foreach (var a in typez)
             {
-                foundedScriptableObjectTypes.Add(a);
+                if (types.Contains(a))
+                {
+                    Log($"{a} was addend!");
+                    continue;
+                }
+                if (a.ContainsAttribute(typeof(SkipScanning)))
+                {
+                    continue;
+                }
+                types.Add(a);
+                if (!a.IsAbstract)
+                {
+                    if (typeof(ScriptableObject).IsAssignableFrom(a))
+                    {
+                        foundedScriptableObjectTypes.Add(a);
+                    }
+                    if (typeof(IAssetLoader<>).ContainsInterface(a))
+                    {
+                        a.GetConstGenericedType(typeof(IAssetLoader<>)).AddLoader((IAssetLoader<Object>)Activator.CreateInstance(a));
+                    }
+                    if (typeof(IAssetModifier<>).ContainsInterface(a))
+                    {
+                        a.GetConstGenericedType(typeof(IAssetModifier<>)).AddModifier((IAssetModifier<Object>)Activator.CreateInstance(a));
+                    }
+                }
             }
         }
         private static void LoadSpecificedAssets(BaseUnityPlugin plugin)
@@ -209,21 +225,13 @@ namespace UnityInterface
     public static class AssetManager
     {
         public static Dictionary<Type, Dictionary<string, Object>> loadedAssets = new Dictionary<Type, Dictionary<string, Object>>();
-        public static Dictionary<Type, IAssetLoader<Object>> assetLoaders = new Dictionary<Type, IAssetLoader<Object>>();
+        internal static Dictionary<Type, IAssetLoader<Object>> assetLoaders = new Dictionary<Type, IAssetLoader<Object>>();
+        internal static Dictionary<Type, List<IAssetModifier<Object>>> assetModifiers = new Dictionary<Type, List<IAssetModifier<Object>>>();
         public static Transform prefabParent { get; internal set; }
-        public static void AddLoader<T>(IAssetLoader<T> loader) where T : Object
-        {
-            Type type = typeof(T);
-            if (!assetLoaders.ContainsKey(type))
-            {
-                assetLoaders.Add(type, loader);
-            }
-            else
-            {
-                assetLoaders[type] = loader;
-            }
-            Log($"Type:{type.Name} of loader:{loader.GetType().Name} was addend into system!");
-        }
+        internal static void ModifyAll() =>
+            assetModifiers.Keys.ToList().ForEach(a =>
+            Resources.FindObjectsOfTypeAll(a).ToList().ForEach(b => assetModifiers[a].ForEach(c =>
+         c.Modify(b).Merge(b))));
         internal static void Log(string log)
         {
             if (PluginCore.assetSystemLog)
@@ -262,14 +270,51 @@ namespace UnityInterface
             if (!loadedAssets[type].ContainsKey(asset.name))
             {
                 loadedAssets[type].Add(asset.name, asset);
-                Log($"{type.Name}_{asset.name}_{asset.GetInstanceID()} was addend into system!");
+                Log($"{type.Name}_{asset.name}_{asset.GetInstanceID()} was addend!");
             }
             else
             {
                 Log($"AssetManager only supports unique names for each type! Name:{asset.name}");
             }
         }
-
+        internal static void AddLoader(this Type assetType, IAssetLoader<Object> loader)
+        {
+            if (!assetLoaders.ContainsKey(assetType))
+            {
+                assetLoaders.Add(assetType, loader);
+            }
+            else
+            {
+                assetLoaders[assetType] = loader;
+            }
+            Log($"Type:{assetType.Name} of loader:{loader.GetType().Name} was addend into system!");
+        }
+        internal static void AddModifier(this Type assetType, IAssetModifier<Object> modifier)
+        {
+            if (!assetModifiers.ContainsKey(assetType))
+            {
+                assetModifiers.Add(assetType, new List<IAssetModifier<Object>>());
+            }
+            assetModifiers[assetType].Add(modifier);
+            Log($"Type:{assetType.Name} of loader:{modifier.GetType().Name} was addend into system!");
+        }
+        public static void ReplaceAsset<T>(T asset) where T : Object
+        {
+            Type type = asset.GetType();
+            if (!loadedAssets.ContainsKey(type))
+            {
+                loadedAssets.Add(type, new Dictionary<string, Object>());
+            }
+            if (loadedAssets[type].ContainsKey(asset.name))
+            {
+                loadedAssets[type][asset.name] = asset;
+                Log($"{type.Name}_{asset.name}_{asset.GetInstanceID()} was replaced!");
+            }
+            else
+            {
+                Log($"AssetManager asked you that have you addend it before! Name:{asset.name}");
+            }
+        }
         public static void SetAsPrefab(GameObject prefab) => prefab.transform.SetParent(prefabParent);
         internal static bool serMod;
         public static string ReplaceInstanceIDs(Type type, string json, bool ser)
@@ -280,7 +325,7 @@ namespace UnityInterface
 
         private static JToken ReplaceToken(Type type, JToken token)
         {
-            Type fieldType, objType;
+            Type fieldType, objType = null;
             if (token is JObject obj)
             {
                 int id;
@@ -292,14 +337,8 @@ namespace UnityInterface
 
                     if (prop.Name == "m_FileID")
                     {
-                        if (typeof(Object).IsAssignableFrom(type))
-                        {
-                            objType = type;
-                        }
-                        else
-                        {
-                            objType = fieldType;
-                        }
+                        objType = typeof(Object).IsAssignableFrom(type) ? type : fieldType;
+
                         if (objType != null)
                         {
                             if (serMod)
@@ -339,6 +378,13 @@ namespace UnityInterface
             else if (token is JArray arr)
             {
                 fieldType = type.GetElementType();
+
+                if (fieldType == null && type.IsGenericType)
+                {
+                    fieldType = type.GetGenericArguments()[0];
+                    Debug.Log(fieldType.FullName);
+                }
+
                 if (fieldType != null)
                 {
                     foreach (var item in arr)
@@ -414,15 +460,11 @@ namespace UnityInterface
         {
             if (__result == null)
             {
-                Object[] ary = Resources.LoadAll(path, systemTypeInstance);
-                if (ary.Length > 0)
-                {
-                    __result = ary[0];
-                }
+                __result = Resources.LoadAll(path, systemTypeInstance).FirstOrDefault();
             }
         }
         [HarmonyPatch(typeof(Resources), "LoadAll", typeof(string), typeof(Type)), HarmonyPostfix]
-        static void PostFix0(string path, Type systemTypeInstance, ref Object[] __result) => __result = Resources.FindObjectsOfTypeAll(systemTypeInstance).Where(a => a.name == path).ToArray();
+        static void PostFix0(string path, Type systemTypeInstance, ref Object[] __result) => __result = Resources.FindObjectsOfTypeAll(systemTypeInstance).Where(a => a.name.Contains(path)).ToArray();
         #endregion
         #region "Enum"     
         private static Dictionary<Type, List<string>> extraEnums = new Dictionary<Type, List<string>>();
@@ -472,6 +514,10 @@ namespace UnityInterface
     public interface IAssetLoader<out T> where T : Object
     {
         T LoadAsset(string path);
+    }
+    public interface IAssetModifier<out T> where T : Object
+    {
+        T Modify(object instance);
     }
 }
 #region"Asset Loaders"
