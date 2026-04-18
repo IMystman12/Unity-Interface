@@ -9,7 +9,6 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.Networking;
-using UnityEngine.Rendering;
 using Object = UnityEngine.Object;
 
 namespace UnityInterface
