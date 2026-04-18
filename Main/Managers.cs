@@ -9,6 +9,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.Networking;
+using UnityEngine.Rendering;
 using Object = UnityEngine.Object;
 
 namespace UnityInterface
@@ -128,10 +129,6 @@ namespace UnityInterface
                     {
                         a.GetConstGenericedType(typeof(IAssetLoader<>)).AddLoader((IAssetLoader<Object>)Activator.CreateInstance(a));
                     }
-                    if (typeof(IAssetModifier<>).ContainsInterface(a))
-                    {
-                        a.GetConstGenericedType(typeof(IAssetModifier<>)).AddModifier((IAssetModifier<Object>)Activator.CreateInstance(a));
-                    }
                 }
             }
         }
@@ -143,10 +140,7 @@ namespace UnityInterface
                 pathTemp = Path.Combine(GetProjectFolder(plugin), itm.Name);
                 if (CheckDirectory(pathTemp, plugin))
                 {
-                    foreach (var filePath in Collections.GetAllFiles(pathTemp))
-                    {
-                        AssetManager.LoadFromPath(filePath, itm);
-                    }
+                    Collections.GetAllFiles(pathTemp).ToList().ForEach(c => AssetManager.LoadFromPath(c, itm));
                 }
             }
         }
@@ -226,12 +220,7 @@ namespace UnityInterface
     {
         public static Dictionary<Type, Dictionary<string, Object>> loadedAssets = new Dictionary<Type, Dictionary<string, Object>>();
         internal static Dictionary<Type, IAssetLoader<Object>> assetLoaders = new Dictionary<Type, IAssetLoader<Object>>();
-        internal static Dictionary<Type, List<IAssetModifier<Object>>> assetModifiers = new Dictionary<Type, List<IAssetModifier<Object>>>();
         public static Transform prefabParent { get; internal set; }
-        internal static void ModifyAll() =>
-            assetModifiers.Keys.ToList().ForEach(a =>
-            Resources.FindObjectsOfTypeAll(a).ToList().ForEach(b => assetModifiers[a].ForEach(c =>
-         c.Modify(b).Merge(b))));
         internal static void Log(string log)
         {
             if (PluginCore.assetSystemLog)
@@ -288,15 +277,6 @@ namespace UnityInterface
                 assetLoaders[assetType] = loader;
             }
             Log($"Type:{assetType.Name} of loader:{loader.GetType().Name} was addend into system!");
-        }
-        internal static void AddModifier(this Type assetType, IAssetModifier<Object> modifier)
-        {
-            if (!assetModifiers.ContainsKey(assetType))
-            {
-                assetModifiers.Add(assetType, new List<IAssetModifier<Object>>());
-            }
-            assetModifiers[assetType].Add(modifier);
-            Log($"Type:{assetType.Name} of loader:{modifier.GetType().Name} was addend into system!");
         }
         public static void ReplaceAsset<T>(T asset) where T : Object
         {
@@ -396,7 +376,7 @@ namespace UnityInterface
             return token;
         }
         #region "Built-in Assets Loading"
-        public static Texture2D GetTexture2DFromPath(string path)
+        public static Texture2D GetTexture2DFromPathSimple(string path)
         {
             Texture2D t = new Texture2D(1, 1);
             t.name = Path.GetFileNameWithoutExtension(path);
@@ -407,7 +387,7 @@ namespace UnityInterface
             Debug.LogWarning("Could not Get texture from path");
             return null;
         }
-        public static Sprite Texture2DToSprite(Texture2D texture)
+        public static Sprite Texture2DToSpriteSimple(Texture2D texture)
         {
             Sprite s = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), Vector2.one * 0.5f);
             s.name = texture.name;
@@ -515,17 +495,36 @@ namespace UnityInterface
     {
         T LoadAsset(string path);
     }
-    public interface IAssetModifier<out T> where T : Object
-    {
-        T Modify(object instance);
-    }
 }
 #region"Asset Loaders"
 namespace UnityInterface.AssetLoaders
 {
     public class Texture2DLoader : IAssetLoader<Texture2D>
     {
-        public Texture2D LoadAsset(string path) => AssetManager.GetTexture2DFromPath(path);
+        public Texture2D LoadAsset(string path) => LoadAssetWithMetadata(path, path.GetMetadata(new Texture2DMetadata()));
+        public static Texture2D LoadAssetWithMetadata(string path, Texture2DMetadata metadata)
+        {
+            Texture2D texture = new Texture2D(1, 1);
+
+            texture.name = Path.GetFileNameWithoutExtension(path);
+            texture.wrapMode = metadata.wrapMode;
+            texture.filterMode = metadata.filterMode;
+
+            if (texture.LoadImage(File.ReadAllBytes(path), metadata.readable))
+            {
+                return texture;
+            }
+
+            Debug.LogWarning("Could not Get texture from path");
+            return null;
+        }
+        [Serializable]
+        public class Texture2DMetadata
+        {
+            public bool readable;
+            public TextureWrapMode wrapMode;
+            public FilterMode filterMode;
+        }
     }
     public class AudioClipLoader : IAssetLoader<AudioClip>
     {
@@ -533,7 +532,32 @@ namespace UnityInterface.AssetLoaders
     }
     public class SpriteLoader : IAssetLoader<Sprite>
     {
-        public Sprite LoadAsset(string path) => AssetManager.Texture2DToSprite(AssetManager.GetTexture2DFromPath(path));
+        public Sprite LoadAsset(string path)
+        {
+            if (Path.GetExtension(path) == ".meta")
+            {
+                return null;
+            }
+
+            Texture2D texture = AssetManager.GetTexture2DFromPathSimple(path);
+            SpriteMetadata metadata0 = path.GetMetadata(new SpriteMetadata()
+            {
+                rect = new Rect(0, 0, texture.width, texture.height),
+                pivot = Vector2.one * 0.5f,
+                pixelPerUnit = 100
+            });
+
+            Sprite s = Sprite.Create(Texture2DLoader.LoadAssetWithMetadata(path, metadata0), metadata0.rect, metadata0.pivot, metadata0.pixelPerUnit);
+            s.name = texture.name;
+            return s;
+        }
+        [Serializable]
+        public class SpriteMetadata : Texture2DLoader.Texture2DMetadata
+        {
+            public Rect rect;
+            public Vector2 pivot;
+            public float pixelPerUnit;
+        }
     }
     public class MeshLoader : IAssetLoader<Mesh>
     {

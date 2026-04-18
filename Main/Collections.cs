@@ -8,6 +8,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.UI;
+using static UnityInterface.AssetLoaders.SpriteLoader;
 
 namespace UnityInterface
 {
@@ -80,6 +81,26 @@ namespace UnityInterface
         public static T[] UniqueCheck<T>(this T[] array) => NullCheck(array).Distinct().ToArray();
         public static bool ContainsInterface(this Type interfaceType, Type typeBase) => typeBase.GetInterfaces().Any(a => a.IsGenericType && a.GetGenericTypeDefinition() == interfaceType);
         public static Type GetConstGenericedType(this Type typeBase, Type interfaceType) => typeBase.GetInterfaces().Where(a => a.IsGenericType && a.GetGenericTypeDefinition() == interfaceType).FirstOrDefault()?.GetGenericArguments()?.FirstOrDefault();
-        public static bool ContainsAttribute(this Type typeBase, Type attributeType) => typeBase.GetCustomAttributes(true).Any(a => attributeType.IsAssignableFrom(a.GetType()));
+        public static bool ContainsAttribute(this Type typeBase, Type attributeType) => typeBase.CustomAttributes.Any(a => attributeType.IsAssignableFrom(a.GetType()));
+        public static string ReplaceExtension(this string pathBase, string extension) => $"{pathBase.Remove(pathBase.Length - Path.GetExtension(pathBase).Length)}{extension}";
+        public static T GetMetadata<T>(this string pathBase, T defualt) where T : class
+        {
+            if (Path.GetExtension(pathBase) == ".meta")
+            {
+                return null;
+            }
+            string metaPath = pathBase.ReplaceExtension(".meta");
+            T metadata0 = null;
+            if (File.Exists(metaPath))
+            {
+                metadata0 = JsonUtility.FromJson<T>(File.ReadAllText(metaPath));
+            }
+            if (metadata0 == null)
+            {
+                File.WriteAllText(metaPath, JsonUtility.ToJson(defualt));
+            }
+            metadata0 = JsonUtility.FromJson<T>(File.ReadAllText(metaPath));
+            return metadata0;
+        }
     }
 }
