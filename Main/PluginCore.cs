@@ -21,9 +21,6 @@ namespace UnityInterface
         internal static bool assetSystemLog, pluginManagerLog;
         void Awake()
         {
-            this.AddToLoad();
-            this.GenerateAssetFolders();
-
             GameObject prefabsToManage = new GameObject("Prefabs");
             DontDestroyOnLoad(prefabsToManage);
             prefabsToManage.transform.SetParent(transform);

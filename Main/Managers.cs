@@ -48,33 +48,28 @@ namespace UnityInterface
         public static string GetProjectFolder(BaseUnityPlugin plugin) => GetProjectFolder(plugin.Info.Metadata.GUID);
 
         internal static List<BaseUnityPlugin> queueToLoad = new List<BaseUnityPlugin>(), queueToGenerate = new List<BaseUnityPlugin>(), queueRequiredReference = new List<BaseUnityPlugin>();
-        public static void AddToLoad(this BaseUnityPlugin plugin)
+        public static void IntializeBaseOptions(this BaseUnityPlugin plugin)
         {
-            if (!queueToLoad.Contains(plugin))
+            bool a = plugin.QuickOption("Load assets automatically", false),
+                b = plugin.QuickOption("Generate if not exsists", false),
+                c = plugin.QuickOption("Generate references", false);
+            if (a)
             {
-                queueToLoad.Add(plugin);
-            }
-        }
-        public static void GenerateAssetFolders(this BaseUnityPlugin plugin)
-        {
-            if (queueToLoad.Contains(plugin) && !queueToGenerate.Contains(plugin))
-            {
-                queueToGenerate.Add(plugin);
-            }
-            else
-            {
-                Debug.Log($"{plugin.Info.Metadata.Name}, You must AddToQueueToLoad and then you be allowed to GenerateAssetFolders");
-            }
-        }
-        public static void GenerateReferenceAssets(this BaseUnityPlugin plugin)
-        {
-            if (queueToGenerate.Contains(plugin) && !queueRequiredReference.Contains(plugin))
-            {
-                queueRequiredReference.Add(plugin);
-            }
-            else
-            {
-                Debug.Log($"{plugin.Info.Metadata.Name}, You must GenerateAssetFolders and then you be allowed to GenerateAssetFolders");
+                if (!queueToLoad.Contains(plugin))
+                {
+                    queueToLoad.Add(plugin);
+                }
+                if (b)
+                {
+                    if (!queueToGenerate.Contains(plugin))
+                    {
+                        queueToGenerate.Add(plugin);
+                    }
+                    if (c && !queueRequiredReference.Contains(plugin))
+                    {
+                        queueRequiredReference.Add(plugin);
+                    }
+                }
             }
         }
         internal static void Log(string log)
@@ -163,22 +158,25 @@ namespace UnityInterface
                     curPath = Path.Combine(startPath, itmType.Name);
                     if (CheckDirectory(curPath, plugin))
                     {
-                        templatePath = Path.Combine(curPath, "Template.json");
-                        if (queueToGenerate.Contains(plugin) && !File.Exists(templatePath))
+                        if (queueRequiredReference.Contains(plugin))
                         {
-                            scriptableObject = ScriptableObject.CreateInstance(itmType);
-                            File.WriteAllText(templatePath, AssetManager.ReplaceInstanceIDs(itmType, JsonUtility.ToJson(scriptableObject), true));
-                        }
-
-                        templatePath = Path.Combine(curPath, "References");
-                        if (queueRequiredReference.Contains(plugin) && !Directory.Exists(templatePath))
-                        {
-                            string s;
-                            Directory.CreateDirectory(templatePath);
-                            foreach (var itm in Resources.FindObjectsOfTypeAll(itmType))
+                            templatePath = Path.Combine(curPath, "Template.json");
+                            if (queueToGenerate.Contains(plugin) && !File.Exists(templatePath))
                             {
-                                s = Path.Combine(templatePath, $"Reference_{itm.name}.json");
-                                File.WriteAllText(s, AssetManager.ReplaceInstanceIDs(itmType, JsonUtility.ToJson(itm), true));
+                                scriptableObject = ScriptableObject.CreateInstance(itmType);
+                                File.WriteAllText(templatePath, AssetManager.ReplaceInstanceIDs(itmType, JsonUtility.ToJson(scriptableObject), true));
+                            }
+
+                            templatePath = Path.Combine(curPath, "References");
+                            if (!Directory.Exists(templatePath))
+                            {
+                                string s;
+                                Directory.CreateDirectory(templatePath);
+                                foreach (var itm in Resources.FindObjectsOfTypeAll(itmType))
+                                {
+                                    s = Path.Combine(templatePath, $"Reference_{itm.name}.json");
+                                    File.WriteAllText(s, AssetManager.ReplaceInstanceIDs(itmType, JsonUtility.ToJson(itm), true));
+                                }
                             }
                         }
 
@@ -460,7 +458,7 @@ namespace UnityInterface
             {
                 extraEnums.Add(type, new List<string>());
                 sampleMode = true;
-                extraEnumsCount.Add(type, Enum.GetNames(type).Length);
+                extraEnumsCount.Add(type, Enum.GetNames(type).Length + 1);
                 sampleMode = false;
             }
             if (!extraEnums[type].Contains(name))
