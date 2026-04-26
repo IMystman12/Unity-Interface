@@ -467,6 +467,7 @@ namespace UnityInterface
             }
             return extraEnumsCount[type] + extraEnums[type].IndexOf(name);
         }
+
         [HarmonyPatch(typeof(Enum), "GetNames"), HarmonyPostfix]
         private static void Postfix_GetNames(Type enumType, ref string[] __result)
         {
