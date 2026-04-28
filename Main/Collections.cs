@@ -2,13 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
 using HarmonyLib;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 using UnityEngine;
-using UnityEngine.UI;
-using static UnityInterface.AssetLoaders.SpriteLoader;
 
 namespace UnityInterface
 {
@@ -101,6 +96,17 @@ namespace UnityInterface
             }
             metadata0 = JsonUtility.FromJson<T>(File.ReadAllText(metaPath));
             return metadata0;
+        }
+        public static GameObject ToGameObject<T>(bool toPrefab = false) => ToGameObject(toPrefab, typeof(T));
+        public static GameObject ToGameObject(bool toPrefab, params Type[] types)
+        {
+            if (types.Length > 0)
+            {
+                GameObject result = new GameObject(types.First().Name, types);
+                AssetManager.SetAsPrefab(result);
+                return result;
+            }
+            return null;
         }
     }
 }
