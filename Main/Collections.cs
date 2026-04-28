@@ -97,8 +97,8 @@ namespace UnityInterface
             metadata0 = JsonUtility.FromJson<T>(File.ReadAllText(metaPath));
             return metadata0;
         }
-        public static GameObject ToGameObject<T>(bool toPrefab = false) => ToGameObject(toPrefab, typeof(T));
-        public static GameObject ToGameObject(bool toPrefab, params Type[] types)
+        public static T ToGameObject<T>(this object header, bool toPrefab = false) => ToGameObject(toPrefab, typeof(T)).GetComponent<T>();
+        public static GameObject ToGameObject(this object header, bool toPrefab, params Type[] types)
         {
             if (types.Length > 0)
             {
