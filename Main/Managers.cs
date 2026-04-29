@@ -299,7 +299,6 @@ namespace UnityInterface
             serMod = ser;
             return ReplaceToken(type, JToken.Parse(json)).ToString(Formatting.Indented);
         }
-
         private static JToken ReplaceToken(Type type, JToken token)
         {
             Type fieldType, objType = null;
@@ -359,7 +358,6 @@ namespace UnityInterface
                 if (fieldType == null && type.IsGenericType)
                 {
                     fieldType = type.GetGenericArguments()[0];
-                    Debug.Log(fieldType.FullName);
                 }
 
                 if (fieldType != null)
