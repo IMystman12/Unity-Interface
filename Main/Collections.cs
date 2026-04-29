@@ -103,7 +103,10 @@ namespace UnityInterface
             if (types.Length > 0)
             {
                 GameObject result = new GameObject(types.First().Name, types);
-                AssetManager.SetAsPrefab(result);
+                if (toPrefab)
+                {
+                    AssetManager.SetAsPrefab(result);
+                }
                 return result;
             }
             return null;
