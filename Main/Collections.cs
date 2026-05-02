@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using HarmonyLib;
 using UnityEngine;
 
@@ -45,17 +46,17 @@ namespace UnityInterface
         /// <typeparam name="T"></typeparam>
         /// <param name="parent">Merge Sample</param>
         /// <param name="target">Merged</param>
-        public static void Merge<P, T>(this P parent, T target)
+        public static void Merge(this object parent, object target)
         {
             CheckExists(parent);
             CheckExists(target);
-            foreach (var item in storage[parent].Fields())
-            {
-                if (storage[target].Field(item).FieldExists())
-                {
-                    target.SetValue(item, GetValue(parent, item));
-                }
-            }
+            parent.GetType().GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).ToList().ForEach(a =>
+                         {
+                             if (storage[target].Field(a.Name).FieldExists())
+                             {
+                                 target.SetValue(a.Name, parent.GetValue(a.Name));
+                             }
+                         });
         }
         public static string[] GetAllFiles(string path, string extensionWithDot = "") => Directory.GetFiles(path, $"*{extensionWithDot}", SearchOption.AllDirectories);
         [Obsolete("Use List<T>.Foreach() instead!", true)] public static void Foreach() => throw new Exception("It's unless!");
