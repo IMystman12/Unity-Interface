@@ -39,6 +39,8 @@ namespace UnityInterface
             list.AddRange(value);
             return list.ToArray();
         }
+        public static List<(Component, List<string>)> GetReferencesFromGameObject(this Component referenced) => referenced.GetComponents<Component>().Where(a => a != referenced).Select(a => (a, a.GetType().GetFieldsWithParents().Where(b => a.GetValue(b) == referenced).ToList())).ToList();
+        public static void SetReferencesFromGameObject(this Component injection, List<(Component, List<string>)> data) => data.ForEach(a => a.Item2.ForEach(b => a.Item1?.SetValue(b, injection)));
         /// <summary>
         /// Merge all vars from parent to target.
         /// </summary>
@@ -50,14 +52,15 @@ namespace UnityInterface
         {
             CheckExists(parent);
             CheckExists(target);
-            parent.GetType().GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).ToList().ForEach(a =>
+            parent.GetType().GetFieldsWithParents().ForEach(a =>
                          {
-                             if (storage[target].Field(a.Name).FieldExists())
+                             if (storage[target].Field(a).FieldExists())
                              {
-                                 target.SetValue(a.Name, parent.GetValue(a.Name));
+                                 target.SetValue(a, parent.GetValue(a));
                              }
                          });
         }
+        public static List<string> GetFieldsWithParents(this Type type) => type.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).SelectMany(a => a.Name).ToList();
         public static string[] GetAllFiles(string path, string extensionWithDot = "") => Directory.GetFiles(path, $"*{extensionWithDot}", SearchOption.AllDirectories);
         [Obsolete("Use List<T>.Foreach() instead!", true)] public static void Foreach() => throw new Exception("It's unless!");
         public static T[] FindWithInactiveAll<T>(this UnityEngine.Object obj, string name) where T : UnityEngine.Object => GameObject.FindObjectsOfType<T>(true).Where(a => a.name == name).ToArray();
