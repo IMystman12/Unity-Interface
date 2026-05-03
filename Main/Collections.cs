@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
+using Mono.Cecil;
 using UnityEngine;
 
 namespace UnityInterface
@@ -115,5 +116,6 @@ namespace UnityInterface
             }
             return null;
         }
+        public static T FirstOrNull<T>(this IEnumerable<T> values) => values.FirstOrDefault();
     }
 }

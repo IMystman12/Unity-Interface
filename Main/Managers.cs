@@ -310,9 +310,9 @@ namespace UnityInterface
             }
             return __result;
         }
-        public static T[] GetAsset<T>() where T : Object => GetAsset(typeof(T)).Where(a => a is T).Select(a => (T)a).ToArray();
+        public static T[] GetAsset<T>() where T : Object => GetAsset(typeof(T)).OfType<T>().ToArray();
         public static Object[] GetAsset(Type type, string name) => GetAsset(type).Where(a => a.name == name).ToArray();
-        public static T[] GetAsset<T>(string name) where T : Object => GetAsset(typeof(T), name).Where(a => a is T).Select(a => (T)a).ToArray();
+        public static T[] GetAsset<T>(string name) where T : Object => GetAsset(typeof(T), name).OfType<T>().ToArray();
         internal static bool serMod;
         public static string ReplaceInstanceIDs(Type type, string json, bool ser)
         {
