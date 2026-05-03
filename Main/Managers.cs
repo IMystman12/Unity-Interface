@@ -203,7 +203,7 @@ namespace UnityInterface
                     {
                         foreach (var itmPath in Collections.GetAllFiles(curPath, ".json").Where(a => "Template" != Path.GetFileNameWithoutExtension(a) && !a.Contains(Path.Combine(curPath, "References"))))
                         {
-                            JsonUtility.FromJsonOverwrite(AssetManager.ReplaceInstanceIDs(itmType, File.ReadAllText(itmPath), false), AssetManager.loadedAssets[itmType][Path.GetFileNameWithoutExtension(itmPath)]);
+                            JsonUtility.FromJsonOverwrite(AssetManager.ReplaceInstanceIDs(itmType, File.ReadAllText(itmPath), false), AssetManager.GetAsset(itmType, Path.GetFileNameWithoutExtension(itmPath)));
                         }
                     }
                 }
@@ -215,7 +215,7 @@ namespace UnityInterface
     [HarmonyPatch]
     public static class AssetManager
     {
-        public static Dictionary<Type, Dictionary<string, Object>> loadedAssets = new Dictionary<Type, Dictionary<string, Object>>();
+        static Dictionary<Type, Dictionary<string, Object>> loadedAssets = new Dictionary<Type, Dictionary<string, Object>>();
         internal static Dictionary<Type, IAssetLoader<Object>> assetLoaders = new Dictionary<Type, IAssetLoader<Object>>();
         public static Transform prefabParent { get; internal set; }
         internal static void Log(string log)
@@ -293,6 +293,26 @@ namespace UnityInterface
             }
         }
         public static void SetAsPrefab(GameObject prefab) => prefab.transform.SetParent(prefabParent);
+        public static Object[] GetAsset(Type type)
+        {
+            Object[] __result = loadedAssets[type].Values.ToArray();
+            if (type.IsAssignableFrom(typeof(Component)))
+            {
+                List<Object> found = new List<Object>();
+                for (int i = 0; i < prefabParent.childCount; i++)
+                {
+                    if (prefabParent.GetChild(i).GetComponent(type))
+                    {
+                        found.Add(prefabParent.GetChild(i).GetComponent(type));
+                    }
+                }
+                __result = __result.AddAs(found.ToArray());
+            }
+            return __result;
+        }
+        public static T[] GetAsset<T>() where T : Object => GetAsset(typeof(T)).Where(a => a is T).Select(a => (T)a).ToArray();
+        public static Object[] GetAsset(Type type, string name) => GetAsset(type).Where(a => a.name == name).ToArray();
+        public static T[] GetAsset<T>(string name) where T : Object => GetAsset(typeof(T), name).Where(a => a is T).Select(a => (T)a).ToArray();
         internal static bool serMod;
         public static string ReplaceInstanceIDs(Type type, string json, bool ser)
         {
@@ -423,13 +443,8 @@ namespace UnityInterface
         #endregion
         #region "Resource Patch"
         [HarmonyPatch(typeof(Resources), "FindObjectsOfTypeAll", typeof(Type)), HarmonyPostfix]
-        static void PostFix(Type type, ref Object[] __result)
-        {
-            if (loadedAssets.ContainsKey(type))
-            {
-                __result = __result.AddAs(loadedAssets[type].Values.ToArray());
-            }
-        }
+        static void PostFix(Type type, ref Object[] __result) => __result = __result.AddAs(GetAsset(type).ToArray());
+
         [HarmonyPatch(typeof(Resources), "Load", typeof(string), typeof(Type)), HarmonyPostfix]
         static void PostFix(string path, Type systemTypeInstance, ref Object __result)
         {
