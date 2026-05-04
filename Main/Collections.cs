@@ -24,6 +24,11 @@ namespace UnityInterface
                 storage.Add(obj, Traverse.Create(obj));
             }
         }
+        public static bool ContainsField(this object obj, string name)
+        {
+            CheckExists(obj);
+            return storage[obj].Field(name).FieldExists();
+        }
         public static T GetValue<T>(this object obj, string name)
         {
             CheckExists(obj);
@@ -61,7 +66,8 @@ namespace UnityInterface
                              }
                          });
         }
-        public static List<string> GetFieldsWithParents(this Type type) => type.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).Select(a => a.Name).ToList();
+        static BindingFlags bindingFlagsDefualt => BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        public static List<string> GetFieldsWithParents(this Type type) => type.GetFields(bindingFlagsDefualt).Select(a => a.Name).ToList();
         public static string[] GetAllFiles(string path, string extensionWithDot = "") => Directory.GetFiles(path, $"*{extensionWithDot}", SearchOption.AllDirectories);
         [Obsolete("Use List<T>.Foreach() instead!", true)] public static void Foreach() => throw new Exception("It's unless!");
         public static T[] FindWithInactiveAll<T>(this UnityEngine.Object obj, string name) where T : UnityEngine.Object => GameObject.FindObjectsOfType<T>(true).Where(a => a.name == name).ToArray();
@@ -117,5 +123,13 @@ namespace UnityInterface
             return null;
         }
         public static T FirstOrNull<T>(this IEnumerable<T> values) => values.FirstOrDefault();
+        public static Type GetFieldType(this Type typeBase, string name)
+        {
+            if (typeBase.ContainsField(name))
+            {
+                return typeBase.GetField(name, bindingFlagsDefualt).FieldType;
+            }
+            return null;
+        }
     }
 }

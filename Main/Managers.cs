@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using BepInEx;
@@ -7,8 +8,12 @@ using BepInEx.Configuration;
 using HarmonyLib;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using Rewired.Utils.Classes.Data;
 using UnityEngine;
 using UnityEngine.Networking;
+using UnityEngine.Tilemaps;
+using UnityInterface.Assets;
+using static UnityEngine.GraphicsBuffer;
 using Object = UnityEngine.Object;
 
 namespace UnityInterface
@@ -305,10 +310,10 @@ namespace UnityInterface
         public static T[] GetAsset<T>() where T : Object => GetAsset(typeof(T)).OfType<T>().ToArray();
         public static Object[] GetAsset(Type type, string name) => GetAsset(type).Where(a => a.name == name).ToArray();
         public static T[] GetAsset<T>(string name) where T : Object => GetAsset(typeof(T), name).OfType<T>().ToArray();
-        internal static bool serMod;
-        public static string ReplaceInstanceIDs(Type type, string json, bool ser)
+        internal static bool serializeMod;
+        public static string ReplaceInstanceIDs(Type type, string json, bool serialize)
         {
-            serMod = ser;
+            serializeMod = serialize;
             return ReplaceToken(type, JToken.Parse(json)).ToString(Formatting.Indented);
         }
         private static JToken ReplaceToken(Type type, JToken token)
@@ -316,49 +321,12 @@ namespace UnityInterface
             Type fieldType, objType = null;
             if (token is JObject obj)
             {
-                int id;
-                string propVal;
                 foreach (var prop in obj.Properties())
                 {
-                    propVal = prop.Value.ToString();
                     fieldType = type.GetField(prop.Name)?.FieldType;
-
-                    if (prop.Name == "m_FileID")
+                    if (fieldType != null && Process(prop, type, fieldType))
                     {
-                        objType = typeof(Object).IsAssignableFrom(type) ? type : fieldType;
-
-                        if (objType != null)
-                        {
-                            if (serMod)
-                            {
-                                id = int.Parse(propVal);
-                                prop.Value = (id == 0) ? "null" : Resources.InstanceIDToObject(id).name;
-                            }
-                            else
-                            {
-                                prop.Value = (propVal == "null") ? 0 : Resources.Load(propVal, type).GetInstanceID();
-                            }
-                        }
-                    }
-
-                    if (fieldType != null)
-                    {
-                        if (fieldType.IsEnum)
-                        {
-                            if (serMod)
-                            {
-                                id = int.Parse(propVal);
-                                prop.Value = Enum.ToObject(fieldType, id).ToString();
-                            }
-                            else
-                            {
-                                prop.Value = (int)propVal.ToEnum(fieldType);
-                            }
-                        }
-                        else
-                        {
-                            ReplaceToken(fieldType, prop.Value);
-                        }
+                        ReplaceToken(fieldType, prop.Value);
                     }
                 }
 
@@ -381,6 +349,120 @@ namespace UnityInterface
                 }
             }
             return token;
+        }
+        private static bool Process(JProperty property, Type typeBase, Type fieldType)
+        {
+            Type objType;
+            int id;
+            string propVal = property.Value.ToString();
+            if (property.Name == "m_FileID")
+            {
+                objType = typeof(Object).IsAssignableFrom(typeBase) ? typeBase : fieldType;
+
+                if (objType != null)
+                {
+                    if (serializeMod)
+                    {
+                        id = int.Parse(propVal);
+                        property.Value = (id == 0) ? "null" : Resources.InstanceIDToObject(id).name;
+                    }
+                    else
+                    {
+                        property.Value = (propVal == "null") ? 0 : Resources.Load(propVal, typeBase).GetInstanceID();
+                    }
+                }
+            }
+
+            if (fieldType != null)
+            {
+                if (fieldType.IsEnum)
+                {
+                    if (serializeMod)
+                    {
+                        id = int.Parse(propVal);
+                        property.Value = Enum.ToObject(fieldType, id).ToString();
+                    }
+                    else
+                    {
+                        property.Value = (int)propVal.ToEnum(fieldType);
+                    }
+                }
+                return false;
+            }
+            return true;
+        }
+        [Serializable]
+        public class Values : ScriptableObject
+        {
+            public List<Value> values = new List<Value>();
+        }
+        public class Value
+        {
+            public string name;
+            public string value;
+        }
+        public static void Override(this Values values, Object @object) => values.values.ForEach(a =>
+        {
+            if (@object.ContainsField(a.name))
+            {
+                @object.SetValue(a.name, FromString(a.value, @object.GetType().GetFieldType(a.name)));
+            }
+        });
+
+        public static void CopyFrom(this Values values, Object @object) => @object.GetType().GetFieldsWithParents().ForEach(a =>
+        {
+            values.values.Add(new Value()
+            {
+                name = a,
+                value = ToString(@object.GetValue(a))
+            });
+        });
+        private static object FromString(string value, Type type)
+        {
+            if (type == typeof(string)) return value;
+            if (type == typeof(int) && int.TryParse(value, out int intVal)) return intVal;
+            if (type == typeof(float) && float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float floatVal)) return floatVal;
+            if (type == typeof(double) && double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double doubleVal)) return doubleVal;
+            if (type == typeof(long) && long.TryParse(value, out long longVal)) return longVal;
+            if (type == typeof(short) && short.TryParse(value, out short shortVal)) return shortVal;
+            if (type == typeof(byte) && byte.TryParse(value, out byte byteVal)) return byteVal;
+            if (type == typeof(bool) && bool.TryParse(value, out bool boolVal)) return boolVal;
+            if (type == typeof(decimal) && decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal decimalVal)) return decimalVal;
+            if (type == typeof(uint) && uint.TryParse(value, out uint uintVal)) return uintVal;
+            if (type == typeof(ulong) && ulong.TryParse(value, out ulong ulongVal)) return ulongVal;
+            if (type == typeof(ushort) && ushort.TryParse(value, out ushort ushortVal)) return ushortVal;
+            if (type == typeof(sbyte) && sbyte.TryParse(value, out sbyte sbyteVal)) return sbyteVal;
+            if (type == typeof(char) && char.TryParse(value, out char charVal)) return charVal;
+            if (type.IsEnum) return value.ToEnum(type);
+            if (type == typeof(DateTime) && DateTime.TryParse(value, out DateTime dateVal)) return dateVal;
+            if (type == typeof(TimeSpan) && TimeSpan.TryParse(value, out TimeSpan timeVal)) return timeVal;
+            if (type == typeof(Guid) && Guid.TryParse(value, out Guid guidVal)) return guidVal;
+            if (type == typeof(Object)) return (value == "null") ? null : Resources.Load(value, type);
+            return JsonUtility.FromJson(value, type);
+        }
+        private static string ToString(object value)
+        {
+            Type type = value.GetType();
+            if (type == typeof(string)) return (string)value;
+            if (type == typeof(int)) return ((int)value).ToString();
+            if (type == typeof(float)) return ((float)value).ToString(CultureInfo.InvariantCulture);
+            if (type == typeof(double)) return ((double)value).ToString(CultureInfo.InvariantCulture);
+            if (type == typeof(long)) return ((long)value).ToString();
+            if (type == typeof(short)) return ((short)value).ToString();
+            if (type == typeof(byte)) return ((byte)value).ToString();
+            if (type == typeof(bool)) return ((bool)value).ToString().ToLower();
+            if (type == typeof(decimal)) return ((decimal)value).ToString(CultureInfo.InvariantCulture);
+            if (type == typeof(uint)) return ((uint)value).ToString();
+            if (type == typeof(ulong)) return ((ulong)value).ToString();
+            if (type == typeof(ushort)) return ((ushort)value).ToString();
+            if (type == typeof(sbyte)) return ((sbyte)value).ToString();
+            if (type == typeof(char)) return ((char)value).ToString();
+            if (type == typeof(DateTime)) return ((DateTime)value).ToString("o");  // ISO 8601
+            if (type == typeof(TimeSpan)) return ((TimeSpan)value).ToString();
+            if (type == typeof(Guid)) return ((Guid)value).ToString();
+            if (type.IsEnum) return value.ToString();
+            if (value is Object unityObj) return unityObj != null ? unityObj.name : "null";
+            return JsonUtility.ToJson(value);
         }
         #region "Built-in Assets Loading"
         public static Texture2D GetTexture2DFromPathSimple(string path)
@@ -500,7 +582,7 @@ namespace UnityInterface
     }
 }
 #region"Asset Loaders"
-namespace UnityInterface.AssetLoaders
+namespace UnityInterface.Assets
 {
     public class Texture2DLoader : IAssetLoader<Texture2D>
     {
