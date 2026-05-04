@@ -318,18 +318,48 @@ namespace UnityInterface
         }
         private static JToken ReplaceToken(Type type, JToken token)
         {
-            Type fieldType, objType = null;
+            Type fieldType;
+            bool flag;
+            int id;
+            string propVal;
             if (token is JObject obj)
             {
                 foreach (var prop in obj.Properties())
                 {
-                    fieldType = type.GetField(prop.Name)?.FieldType;
-                    if (fieldType != null && Process(prop, type, fieldType))
+                    propVal = prop.Value.ToString();
+                    if (prop.Name == "m_FileID")
                     {
-                        ReplaceToken(fieldType, prop.Value);
+                        if (serializeMod)
+                        {
+                            id = int.Parse(propVal);
+                            prop.Value = (id == 0) ? "null" : Resources.InstanceIDToObject(id).name;
+                        }
+                        else
+                        {
+                            prop.Value = (propVal == "null") ? 0 : Resources.Load(propVal, type).GetInstanceID();
+                        }
+                    }
+                    fieldType = type.GetField(prop.Name)?.FieldType;
+                    if (fieldType != null)
+                    {
+                        if (fieldType.IsEnum)
+                        {
+                            if (serializeMod)
+                            {
+                                id = int.Parse(propVal);
+                                prop.Value = Enum.ToObject(fieldType, id).ToString();
+                            }
+                            else
+                            {
+                                prop.Value = (int)propVal.ToEnum(fieldType);
+                            }
+                        }
+                        else
+                        {
+                            ReplaceToken(fieldType, prop.Value);
+                        }
                     }
                 }
-
             }
             else if (token is JArray arr)
             {
@@ -349,47 +379,6 @@ namespace UnityInterface
                 }
             }
             return token;
-        }
-        private static bool Process(JProperty property, Type typeBase, Type fieldType)
-        {
-            Type objType;
-            int id;
-            string propVal = property.Value.ToString();
-            if (property.Name == "m_FileID")
-            {
-                objType = typeof(Object).IsAssignableFrom(typeBase) ? typeBase : fieldType;
-
-                if (objType != null)
-                {
-                    if (serializeMod)
-                    {
-                        id = int.Parse(propVal);
-                        property.Value = (id == 0) ? "null" : Resources.InstanceIDToObject(id).name;
-                    }
-                    else
-                    {
-                        property.Value = (propVal == "null") ? 0 : Resources.Load(propVal, typeBase).GetInstanceID();
-                    }
-                }
-            }
-
-            if (fieldType != null)
-            {
-                if (fieldType.IsEnum)
-                {
-                    if (serializeMod)
-                    {
-                        id = int.Parse(propVal);
-                        property.Value = Enum.ToObject(fieldType, id).ToString();
-                    }
-                    else
-                    {
-                        property.Value = (int)propVal.ToEnum(fieldType);
-                    }
-                }
-                return false;
-            }
-            return true;
         }
         [Serializable]
         public class Values : ScriptableObject

@@ -45,7 +45,7 @@ namespace UnityInterface
             list.AddRange(value);
             return list.ToArray();
         }
-        public static List<(Component, List<string>)> GetReferencesFromGameObject(this Component referenced) => referenced.GetComponents<Component>().Where(a => a != referenced).Select(a => (a, a.GetType().GetFieldsWithParents().Where(b => a.GetValue(b) == referenced).ToList())).ToList();
+        public static List<(Component, List<string>)> GetReferencesFromGameObject(this Component referenced) => referenced.GetComponentsInChildren<Component>().Where(a => a != referenced).Select(a => (a, a.GetType().GetFieldsWithParents().Where(b => a.GetValue(b) == referenced).ToList())).ToList();
         public static void SetReferencesFromGameObject(this Component injection, List<(Component, List<string>)> data) => data.ForEach(a => a.Item2.ForEach(b => a.Item1?.SetValue(b, injection)));
         /// <summary>
         /// Merge all vars from parent to target.
