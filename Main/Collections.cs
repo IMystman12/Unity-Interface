@@ -131,5 +131,34 @@ namespace UnityInterface
             }
             return null;
         }
+        /// <summary>
+        /// The gameObject with script(O) and replace it to script(C)
+        /// </summary>
+        /// <typeparam name="O">Script(O) type</typeparam>
+        /// <typeparam name="C">Script(C) type</typeparam>
+        /// <returns>Replaced script(C)</returns>
+        public static C Rescript<O, C>(O source) where O : MonoBehaviour where C : MonoBehaviour
+        {
+            O pref = GameObject.Instantiate(source, AssetManager.prefabParent);
+
+            GameObject a = pref.gameObject;
+            a.name = typeof(C).Name;
+
+            var data = pref.GetReferencesFromGameObject();
+            var b = pref.gameObject.AddComponent<C>();
+            pref.Merge(b);
+            b.SetReferencesFromGameObject(data);
+
+            GameObject.Destroy(pref);
+
+            return a.GetComponent<C>();
+        }
+        /// <summary>
+        /// Find the first gameObject with script(O) and replace it to script(C)
+        /// </summary>
+        /// <typeparam name="O">Script(O) type</typeparam>
+        /// <typeparam name="C">Script(C) type</typeparam>
+        /// <returns>Replaced script(C)</returns>
+        public static C Rescript<O, C>() where O : MonoBehaviour where C : MonoBehaviour => Rescript<O, C>(Resources.FindObjectsOfTypeAll<O>().First());
     }
 }
