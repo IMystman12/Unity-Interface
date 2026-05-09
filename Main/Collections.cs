@@ -160,5 +160,9 @@ namespace UnityInterface
         /// <typeparam name="C">Script(C) type</typeparam>
         /// <returns>Replaced script(C)</returns>
         public static C Rescript<O, C>() where O : MonoBehaviour where C : MonoBehaviour => Rescript<O, C>(Resources.FindObjectsOfTypeAll<O>().First());
+        public static T Random<T>(this IEnumerable<T> selections) => Random(selections.ToArray());
+        public static T Random<T>(params T[] selections) => selections[UnityEngine.Random.Range(0, selections.Length)];
+        public static T Random<T>(this IEnumerable<T> selections, System.Random rng) => Random(selections.ToArray(), rng);
+        public static T Random<T>(System.Random rng, params T[] selections) => selections[rng.Next(0, selections.Length)];
     }
 }
