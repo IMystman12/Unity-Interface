@@ -3,7 +3,6 @@ using System.Linq;
 using BepInEx;
 using HarmonyLib;
 using UnityEngine;
-using UnityInterface.Assets;
 
 namespace UnityInterface
 {

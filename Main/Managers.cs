@@ -8,12 +8,8 @@ using BepInEx.Configuration;
 using HarmonyLib;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
-using Rewired.Utils.Classes.Data;
 using UnityEngine;
 using UnityEngine.Networking;
-using UnityEngine.Tilemaps;
-using UnityInterface.Assets;
-using static UnityEngine.GraphicsBuffer;
 using Object = UnityEngine.Object;
 
 namespace UnityInterface
@@ -98,6 +94,14 @@ namespace UnityInterface
             }
             return true;
         }
+        public static string GetAssetedPathAndGenerate<T>(this BaseUnityPlugin plugin, string name)
+        {
+            string p = Path.Combine(Application.streamingAssetsPath, "Projects");
+            CheckDirectory(p, true);
+            p = Path.Combine(GetProjectFolder(plugin), typeof(T).Name);
+            CheckDirectory(p, true);
+            return Path.Combine(p, $"{name}.json");
+        }
         internal static void InjectPluginDLLs()
         {
             AddType(AppDomain.CurrentDomain.GetAssemblies().SelectMany(a => a.GetTypes()).ToArray().UniqueCheck());
@@ -168,8 +172,7 @@ namespace UnityInterface
                             templatePath = Path.Combine(curPath, "Template.json");
                             if (queueToGenerate.Contains(plugin) && !File.Exists(templatePath))
                             {
-                                scriptableObject = ScriptableObject.CreateInstance(itmType);
-                                File.WriteAllText(templatePath, AssetManager.ReplaceInstanceIDs(itmType, JsonUtility.ToJson(scriptableObject), true));
+                                AssetManager.CreateAndSaveScriptableObject("Template", templatePath, itmType);
                             }
 
                             templatePath = Path.Combine(curPath, "References");
@@ -310,6 +313,14 @@ namespace UnityInterface
         public static T[] GetAsset<T>() where T : Object => GetAsset(typeof(T)).OfType<T>().ToArray();
         public static Object[] GetAsset(Type type, string name) => GetAsset(type).Where(a => a.name == name).ToArray();
         public static T[] GetAsset<T>(string name) where T : Object => GetAsset(typeof(T), name).OfType<T>().ToArray();
+        public static ScriptableObject CreateAndSaveScriptableObject(string name, string path, Type type)
+        {
+            ScriptableObject scriptableObject = ScriptableObject.CreateInstance(type);
+            File.WriteAllText(path, ReplaceInstanceIDs(type, JsonUtility.ToJson(scriptableObject), true));
+            return scriptableObject;
+        }
+        public static T CreateAndSaveScriptableObject<T>(string name, string path) where T : ScriptableObject => (T)CreateAndSaveScriptableObject(name, path, typeof(T));
+        public static T GetScriptableObjectOrCreate<T>(string name, string path) where T : ScriptableObject => Resources.Load<T>(name) ?? CreateAndSaveScriptableObject<T>(name, path);
         internal static bool serializeMod;
         public static string ReplaceInstanceIDs(Type type, string json, bool serialize)
         {
@@ -569,77 +580,77 @@ namespace UnityInterface
     {
         T LoadAsset(string path);
     }
-}
-#region"Asset Loaders"
-namespace UnityInterface.Assets
-{
-    public class Texture2DLoader : IAssetLoader<Texture2D>
+    #region"Asset Loaders"
+    namespace UnityInterface.Assets
     {
-        public Texture2D LoadAsset(string path) => LoadAssetWithMetadata(path, path.GetMetadata(new Texture2DMetadata()));
-        public static Texture2D LoadAssetWithMetadata(string path, Texture2DMetadata metadata)
+        public class Texture2DLoader : IAssetLoader<Texture2D>
         {
-            Texture2D texture = new Texture2D(1, 1);
-
-            texture.name = Path.GetFileNameWithoutExtension(path);
-            texture.wrapMode = metadata.wrapMode;
-            texture.filterMode = metadata.filterMode;
-
-            if (texture.LoadImage(File.ReadAllBytes(path), metadata.readable))
+            public Texture2D LoadAsset(string path) => LoadAssetWithMetadata(path, path.GetMetadata(new Texture2DMetadata()));
+            public static Texture2D LoadAssetWithMetadata(string path, Texture2DMetadata metadata)
             {
-                return texture;
-            }
+                Texture2D texture = new Texture2D(1, 1);
 
-            Debug.LogWarning("Could not Get texture from path");
-            return null;
-        }
-        [Serializable]
-        public class Texture2DMetadata
-        {
-            public bool readable;
-            public TextureWrapMode wrapMode;
-            public FilterMode filterMode;
-        }
-    }
-    public class AudioClipLoader : IAssetLoader<AudioClip>
-    {
-        public AudioClip LoadAsset(string path) => AssetManager.GetAudioClipFromPath(path);
-    }
-    public class SpriteLoader : IAssetLoader<Sprite>
-    {
-        public Sprite LoadAsset(string path)
-        {
-            if (Path.GetExtension(path) == ".meta")
-            {
+                texture.name = Path.GetFileNameWithoutExtension(path);
+                texture.wrapMode = metadata.wrapMode;
+                texture.filterMode = metadata.filterMode;
+
+                if (texture.LoadImage(File.ReadAllBytes(path), metadata.readable))
+                {
+                    return texture;
+                }
+
+                Debug.LogWarning("Could not Get texture from path");
                 return null;
             }
-
-            Texture2D texture = AssetManager.GetTexture2DFromPathSimple(path);
-            SpriteMetadata metadata0 = path.GetMetadata(new SpriteMetadata()
+            [Serializable]
+            public class Texture2DMetadata
             {
-                rect = new Rect(0, 0, texture.width, texture.height),
-                pivot = Vector2.one * 0.5f,
-                pixelPerUnit = 100
-            });
-
-            Sprite s = Sprite.Create(Texture2DLoader.LoadAssetWithMetadata(path, metadata0), metadata0.rect, metadata0.pivot, metadata0.pixelPerUnit);
-            s.name = texture.name;
-            return s;
+                public bool readable;
+                public TextureWrapMode wrapMode;
+                public FilterMode filterMode;
+            }
         }
-        [Serializable]
-        public class SpriteMetadata : Texture2DLoader.Texture2DMetadata
+        public class AudioClipLoader : IAssetLoader<AudioClip>
         {
-            public Rect rect;
-            public Vector2 pivot;
-            public float pixelPerUnit;
+            public AudioClip LoadAsset(string path) => AssetManager.GetAudioClipFromPath(path);
         }
-    }
-    public class MeshLoader : IAssetLoader<Mesh>
-    {
-        public Mesh LoadAsset(string path) => AssetManager.GetMeshFromPath(path);
-    }
-    public class AssetBundleLoader : IAssetLoader<AssetBundle>
-    {
-        public AssetBundle LoadAsset(string path) => AssetManager.GetAssetBundleFromPath(path);
+        public class SpriteLoader : IAssetLoader<Sprite>
+        {
+            public Sprite LoadAsset(string path)
+            {
+                if (Path.GetExtension(path) == ".meta")
+                {
+                    return null;
+                }
+
+                Texture2D texture = AssetManager.GetTexture2DFromPathSimple(path);
+                SpriteMetadata metadata0 = path.GetMetadata(new SpriteMetadata()
+                {
+                    rect = new Rect(0, 0, texture.width, texture.height),
+                    pivot = Vector2.one * 0.5f,
+                    pixelPerUnit = 100
+                });
+
+                Sprite s = Sprite.Create(Texture2DLoader.LoadAssetWithMetadata(path, metadata0), metadata0.rect, metadata0.pivot, metadata0.pixelPerUnit);
+                s.name = texture.name;
+                return s;
+            }
+            [Serializable]
+            public class SpriteMetadata : Texture2DLoader.Texture2DMetadata
+            {
+                public Rect rect;
+                public Vector2 pivot;
+                public float pixelPerUnit;
+            }
+        }
+        public class MeshLoader : IAssetLoader<Mesh>
+        {
+            public Mesh LoadAsset(string path) => AssetManager.GetMeshFromPath(path);
+        }
+        public class AssetBundleLoader : IAssetLoader<AssetBundle>
+        {
+            public AssetBundle LoadAsset(string path) => AssetManager.GetAssetBundleFromPath(path);
+        }
     }
 }
 #endregion
