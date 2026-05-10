@@ -6,6 +6,7 @@ using System.Reflection;
 using HarmonyLib;
 using Mono.Cecil;
 using UnityEngine;
+using static UnityInterface.AssetManager;
 
 namespace UnityInterface
 {
@@ -164,5 +165,6 @@ namespace UnityInterface
         public static T Random<T>(params T[] selections) => selections[UnityEngine.Random.Range(0, selections.Length)];
         public static T Random<T>(this IEnumerable<T> selections, System.Random rng) => Random(selections.ToArray(), rng);
         public static T Random<T>(System.Random rng, params T[] selections) => selections[rng.Next(0, selections.Length)];
+        public static void ApplyValues<T>(this T compnonent) where T : Component => PluginCore.Instance.GetScriptableObjectOrCreate<Values>($"{compnonent.name} {typeof(T).Name}").Override(compnonent);
     }
 }
