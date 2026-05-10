@@ -16,9 +16,11 @@ namespace UnityInterface
     [BepInPlugin("unity.interface", "Unity Interface", "1.0")]
     internal class PluginCore : BaseUnityPlugin
     {
+        internal static PluginCore Instance { get; private set; }
         internal static bool assetSystemLog, pluginManagerLog;
         void Awake()
         {
+            Instance = this;
             GameObject prefabsToManage = new GameObject("Prefabs");
             DontDestroyOnLoad(prefabsToManage);
             prefabsToManage.transform.SetParent(transform);
