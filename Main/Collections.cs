@@ -169,6 +169,7 @@ namespace UnityInterface
         public static T Random<T>(params T[] selections) => selections[UnityEngine.Random.Range(0, selections.Length)];
         public static T Random<T>(this IEnumerable<T> selections, System.Random rng) => Random(selections.ToArray(), rng);
         public static T Random<T>(System.Random rng, params T[] selections) => selections[rng.Next(0, selections.Length)];
-        public static void ApplyValues<T>(this T compnonent) where T : Component => PluginCore.Instance.GetScriptableObjectOrCreate<Values>($"{compnonent.name} {typeof(T).Name}").Override(compnonent);
+        public static void ApplyValues(this Component component) => PluginCore.Instance.GetScriptableObjectOrCreate<Values>($"{component.name} {component.GetType().Name}").Override(component);
+        public static void ApplyValues<T>(this T component) where T : Component => component.ApplyValues();
     }
 }
