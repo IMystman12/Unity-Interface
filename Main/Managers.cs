@@ -320,6 +320,7 @@ namespace UnityInterface
             return scriptableObject;
         }
         public static T CreateAndSaveScriptableObject<T>(string name, string path) where T : ScriptableObject => (T)CreateAndSaveScriptableObject(name, path, typeof(T));
+        public static T GetScriptableObjectOrCreate<T>(string name, string path) where T : ScriptableObject => (T)GetScriptableObjectOrCreate(name, path, typeof(T));
         public static ScriptableObject GetScriptableObjectOrCreate(string name, string path, Type type) => (ScriptableObject)Resources.Load(name, type) ?? CreateAndSaveScriptableObject(name, path, type);
         internal static bool serializeMod;
         public static string ReplaceInstanceIDs(Type type, string json, bool serialize)
