@@ -109,8 +109,8 @@ namespace UnityInterface
             metadata0 = JsonUtility.FromJson<T>(File.ReadAllText(metaPath));
             return metadata0;
         }
-        public static T ToGameObject<T>(this object header, bool toPrefab = false) => header.ToGameObject(toPrefab, typeof(T)).GetComponent<T>();
-        public static GameObject ToGameObject(this object header, bool toPrefab, params Type[] types)
+        public static T ToGameObject<T>(this object header, bool toPrefab = false, bool applyValues = false) => header.ToGameObject(toPrefab, applyValues, typeof(T)).GetComponent<T>();
+        public static GameObject ToGameObject(this object header, bool toPrefab, bool applyValues, params Type[] types)
         {
             if (types.Length > 0)
             {
@@ -118,6 +118,10 @@ namespace UnityInterface
                 if (toPrefab)
                 {
                     AssetManager.SetAsPrefab(result);
+                }
+                if (applyValues)
+                {
+                    types.ToList().ForEach(a => result.GetComponent(a).ApplyValues());
                 }
                 return result;
             }
