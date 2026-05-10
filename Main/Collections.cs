@@ -167,7 +167,7 @@ namespace UnityInterface
         public static C Rescript<O, C>() where O : MonoBehaviour where C : MonoBehaviour => Rescript<O, C>(Resources.FindObjectsOfTypeAll<O>().First());
         public static T Random<T>(this IEnumerable<T> selections) => Random(selections.ToArray());
         public static T Random<T>(params T[] selections) => selections[UnityEngine.Random.Range(0, selections.Length)];
-        public static T Random<T>(this IEnumerable<T> selections, System.Random rng) => Random(selections.ToArray(), rng);
+        public static T Random<T>(this IEnumerable<T> selections, System.Random rng) => Random(rng, selections.ToArray());
         public static T Random<T>(System.Random rng, params T[] selections) => selections[rng.Next(0, selections.Length)];
         public static void ApplyValues(this Component component) => PluginCore.Instance.GetScriptableObjectOrCreate<Values>($"{component.name} {component.GetType().Name}").Override(component);
         public static void ApplyValues<T>(this T component) where T : Component => component.ApplyValues();
