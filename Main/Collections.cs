@@ -6,6 +6,7 @@ using System.Reflection;
 using HarmonyLib;
 using Mono.Cecil;
 using UnityEngine;
+using static Mono.Security.X509.X520;
 using static UnityInterface.AssetManager;
 
 namespace UnityInterface
@@ -169,7 +170,16 @@ namespace UnityInterface
         public static T Random<T>(params T[] selections) => selections[UnityEngine.Random.Range(0, selections.Length)];
         public static T Random<T>(this IEnumerable<T> selections, System.Random rng) => Random(rng, selections.ToArray());
         public static T Random<T>(System.Random rng, params T[] selections) => selections[rng.Next(0, selections.Length)];
-        public static void ApplyValues(this Component component) => PluginCore.Instance.GetScriptableObjectOrCreate<Values>($"{component.name} {component.GetType().Name}").Override(component);
+        public static void ApplyValues(this Component component)
+        {
+            string name = $"{component.name} {component.GetType().Name}";
+            string path = Path.Combine(PluginManager.GetProjectFolder(PluginCore.Instance), $"{name}.json");
+            if (!File.Exists(path))
+            {
+                File.WriteAllText(path, ToJson(component));
+            }
+            JsonUtility.FromJsonOverwrite(FromJson(File.ReadAllText(path), component.GetType()), component);
+        }
         public static void ApplyValues<T>(this T component) where T : Component => component.ApplyValues();
     }
 }

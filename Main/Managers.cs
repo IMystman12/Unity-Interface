@@ -10,6 +10,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.Networking;
+using static Mono.Security.X509.X520;
 using Object = UnityEngine.Object;
 
 namespace UnityInterface
@@ -183,7 +184,7 @@ namespace UnityInterface
                                 foreach (var itm in Resources.FindObjectsOfTypeAll(itmType))
                                 {
                                     s = Path.Combine(templatePath, $"Reference_{itm.name}.json");
-                                    File.WriteAllText(s, AssetManager.ReplaceInstanceIDs(itmType, JsonUtility.ToJson(itm), true));
+                                    File.WriteAllText(s, AssetManager.ToJson(itm));
                                 }
                             }
                         }
@@ -211,7 +212,7 @@ namespace UnityInterface
                     {
                         foreach (var itmPath in Collections.GetAllFiles(curPath, ".json").Where(a => "Template" != Path.GetFileNameWithoutExtension(a) && !a.Contains(Path.Combine(curPath, "References"))))
                         {
-                            JsonUtility.FromJsonOverwrite(AssetManager.ReplaceInstanceIDs(itmType, File.ReadAllText(itmPath), false), AssetManager.GetAsset(itmType, Path.GetFileNameWithoutExtension(itmPath)).First());
+                            JsonUtility.FromJsonOverwrite(AssetManager.FromJson(File.ReadAllText(itmPath), itmType), AssetManager.GetAsset(itmType, Path.GetFileNameWithoutExtension(itmPath)).First());
                         }
                     }
                 }
@@ -223,6 +224,8 @@ namespace UnityInterface
     [HarmonyPatch]
     public static class AssetManager
     {
+        public static string ToJson(object obj) => ReplaceInstanceIDs(obj.GetType(), JsonUtility.ToJson(obj, true), true);
+        public static string FromJson(string json, Type type) => ReplaceInstanceIDs(type, json, false);
         static Dictionary<Type, Dictionary<string, Object>> loadedAssets = new Dictionary<Type, Dictionary<string, Object>>();
         internal static Dictionary<Type, IAssetLoader<Object>> assetLoaders = new Dictionary<Type, IAssetLoader<Object>>();
         public static Transform prefabParent { get; internal set; }
@@ -316,16 +319,18 @@ namespace UnityInterface
         public static ScriptableObject CreateAndSaveScriptableObject(string name, string path, Type type)
         {
             ScriptableObject scriptableObject = ScriptableObject.CreateInstance(type);
-            File.WriteAllText(path, ReplaceInstanceIDs(type, JsonUtility.ToJson(scriptableObject), true));
+            SaveScriptableObject(scriptableObject, type, path);
             return scriptableObject;
         }
+        public static void SaveScriptableObject<T>(ScriptableObject scriptableObject) where T : ScriptableObject => SaveScriptableObject(scriptableObject, typeof(T), PluginCore.Instance.GetAssetedPathAndGenerate<T>(scriptableObject.name));
+        public static void SaveScriptableObject(ScriptableObject scriptableObject, Type type, string path) => File.WriteAllText(path, ReplaceInstanceIDs(type, JsonUtility.ToJson(scriptableObject), true));
         public static T CreateAndSaveScriptableObject<T>(string name, string path) where T : ScriptableObject => (T)CreateAndSaveScriptableObject(name, path, typeof(T));
         public static T GetScriptableObjectOrCreate<T>(string name) where T : ScriptableObject => PluginCore.Instance.GetScriptableObjectOrCreate<T>(name);
         public static T GetScriptableObjectOrCreate<T>(this BaseUnityPlugin plugin, string name) where T : ScriptableObject => GetScriptableObjectOrCreate<T>(name, plugin.GetAssetedPathAndGenerate<T>(name));
         public static T GetScriptableObjectOrCreate<T>(string name, string path) where T : ScriptableObject => (T)GetScriptableObjectOrCreate(name, path, typeof(T));
         public static ScriptableObject GetScriptableObjectOrCreate(string name, string path, Type type) => (ScriptableObject)Resources.Load(name, type) ?? CreateAndSaveScriptableObject(name, path, type);
         internal static bool serializeMod;
-        public static string ReplaceInstanceIDs(Type type, string json, bool serialize)
+        private static string ReplaceInstanceIDs(Type type, string json, bool serialize)
         {
             serializeMod = serialize;
             return ReplaceToken(type, JToken.Parse(json)).ToString(Formatting.Indented);
@@ -393,79 +398,6 @@ namespace UnityInterface
                 }
             }
             return token;
-        }
-        [Serializable]
-        public class Values : ScriptableObject
-        {
-            public List<Value> values = new List<Value>();
-        }
-        public class Value
-        {
-            public string name;
-            public string value;
-        }
-        public static void Override(this Values values, Object @object) => values.values.ForEach(a =>
-        {
-            if (@object.ContainsField(a.name))
-            {
-                @object.SetValue(a.name, FromString(a.value, @object.GetType().GetFieldType(a.name)));
-            }
-        });
-
-        public static void CopyFrom(this Values values, Object @object) => @object.GetType().GetFieldsWithParents().ForEach(a =>
-        {
-            values.values.Add(new Value()
-            {
-                name = a,
-                value = ToString(@object.GetValue(a))
-            });
-        });
-        private static object FromString(string value, Type type)
-        {
-            if (type == typeof(string)) return value;
-            if (type == typeof(int) && int.TryParse(value, out int intVal)) return intVal;
-            if (type == typeof(float) && float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float floatVal)) return floatVal;
-            if (type == typeof(double) && double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double doubleVal)) return doubleVal;
-            if (type == typeof(long) && long.TryParse(value, out long longVal)) return longVal;
-            if (type == typeof(short) && short.TryParse(value, out short shortVal)) return shortVal;
-            if (type == typeof(byte) && byte.TryParse(value, out byte byteVal)) return byteVal;
-            if (type == typeof(bool) && bool.TryParse(value, out bool boolVal)) return boolVal;
-            if (type == typeof(decimal) && decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal decimalVal)) return decimalVal;
-            if (type == typeof(uint) && uint.TryParse(value, out uint uintVal)) return uintVal;
-            if (type == typeof(ulong) && ulong.TryParse(value, out ulong ulongVal)) return ulongVal;
-            if (type == typeof(ushort) && ushort.TryParse(value, out ushort ushortVal)) return ushortVal;
-            if (type == typeof(sbyte) && sbyte.TryParse(value, out sbyte sbyteVal)) return sbyteVal;
-            if (type == typeof(char) && char.TryParse(value, out char charVal)) return charVal;
-            if (type.IsEnum) return value.ToEnum(type);
-            if (type == typeof(DateTime) && DateTime.TryParse(value, out DateTime dateVal)) return dateVal;
-            if (type == typeof(TimeSpan) && TimeSpan.TryParse(value, out TimeSpan timeVal)) return timeVal;
-            if (type == typeof(Guid) && Guid.TryParse(value, out Guid guidVal)) return guidVal;
-            if (type == typeof(Object)) return (value == "null") ? null : Resources.Load(value, type);
-            return JsonUtility.FromJson(value, type);
-        }
-        private static string ToString(object value)
-        {
-            Type type = value.GetType();
-            if (type == typeof(string)) return (string)value;
-            if (type == typeof(int)) return ((int)value).ToString();
-            if (type == typeof(float)) return ((float)value).ToString(CultureInfo.InvariantCulture);
-            if (type == typeof(double)) return ((double)value).ToString(CultureInfo.InvariantCulture);
-            if (type == typeof(long)) return ((long)value).ToString();
-            if (type == typeof(short)) return ((short)value).ToString();
-            if (type == typeof(byte)) return ((byte)value).ToString();
-            if (type == typeof(bool)) return ((bool)value).ToString().ToLower();
-            if (type == typeof(decimal)) return ((decimal)value).ToString(CultureInfo.InvariantCulture);
-            if (type == typeof(uint)) return ((uint)value).ToString();
-            if (type == typeof(ulong)) return ((ulong)value).ToString();
-            if (type == typeof(ushort)) return ((ushort)value).ToString();
-            if (type == typeof(sbyte)) return ((sbyte)value).ToString();
-            if (type == typeof(char)) return ((char)value).ToString();
-            if (type == typeof(DateTime)) return ((DateTime)value).ToString("o");  // ISO 8601
-            if (type == typeof(TimeSpan)) return ((TimeSpan)value).ToString();
-            if (type == typeof(Guid)) return ((Guid)value).ToString();
-            if (type.IsEnum) return value.ToString();
-            if (value is Object unityObj) return unityObj != null ? unityObj.name : "null";
-            return JsonUtility.ToJson(value);
         }
         #region "Built-in Assets Loading"
         public static Texture2D GetTexture2DFromPathSimple(string path)
