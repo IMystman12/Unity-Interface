@@ -10,7 +10,6 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.Networking;
-using static Mono.Security.X509.X520;
 using Object = UnityEngine.Object;
 
 namespace UnityInterface
@@ -358,7 +357,7 @@ namespace UnityInterface
                             prop.Value = (propVal == "null") ? 0 : Resources.Load(propVal, type).GetInstanceID();
                         }
                     }
-                    fieldType = type.GetField(prop.Name)?.FieldType;
+                    fieldType = type.GetField(prop.Name, Collections.bindingFlagsDefualt)?.FieldType;
                     if (fieldType != null)
                     {
                         if (fieldType.IsEnum)

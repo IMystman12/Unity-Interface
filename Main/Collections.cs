@@ -68,7 +68,7 @@ namespace UnityInterface
                              }
                          });
         }
-        static BindingFlags bindingFlagsDefualt => BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        internal static BindingFlags bindingFlagsDefualt => BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
         public static List<string> GetFieldsWithParents(this Type type) => type.GetFields(bindingFlagsDefualt).Select(a => a.Name).ToList();
         public static string[] GetAllFiles(string path, string extensionWithDot = "") => Directory.GetFiles(path, $"*{extensionWithDot}", SearchOption.AllDirectories);
         [Obsolete("Use List<T>.Foreach() instead!", true)] public static void Foreach() => throw new Exception("It's unless!");
