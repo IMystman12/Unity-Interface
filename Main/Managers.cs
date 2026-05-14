@@ -212,7 +212,14 @@ namespace UnityInterface
                     {
                         foreach (var itmPath in Collections.GetAllFiles(curPath, ".json").Where(a => "Template" != Path.GetFileNameWithoutExtension(a) && !a.Contains(Path.Combine(curPath, "References"))))
                         {
-                            JsonUtility.FromJsonOverwrite(AssetManager.FromJson(File.ReadAllText(itmPath), itmType), AssetManager.GetAsset(itmType, Path.GetFileNameWithoutExtension(itmPath)).First());
+                            try
+                            {
+                                JsonUtility.FromJsonOverwrite(AssetManager.FromJson(File.ReadAllText(itmPath), itmType), AssetManager.GetAsset(itmType, Path.GetFileNameWithoutExtension(itmPath)).First());
+                            }
+                            catch
+                            {
+                                Debug.LogWarning($"{Path.GetFileNameWithoutExtension(itmPath)} can't loaded!");
+                            }
                         }
                     }
                 }
@@ -536,15 +543,7 @@ namespace UnityInterface
                 }
 
                 Texture2D texture = AssetManager.GetTexture2DFromPathSimple(path);
-                //SpriteMetadata metadata0 = path.GetMetadata(new SpriteMetadata()
-                //{
-                //    rect = ,
-                //    pivot =,
-                //    pixelPerUnit = 100
-                //});
-
-                //       Sprite s = Sprite.Create(Texture2DLoader.LoadAssetWithMetadata(path, metadata0), metadata0.rect, metadata0.pivot, metadata0.pixelPerUnit);
-                Sprite s = Sprite.Create(AssetManager.GetTexture2DFromPathSimple(path), new Rect(0, 0, texture.width, texture.height), Vector2.one * 0.5f, 100);
+                Sprite s = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), Vector2.one * 0.5f, 100);
                 s.name = texture.name;
                 return s;
             }
