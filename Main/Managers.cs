@@ -10,6 +10,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.Networking;
+using UnityEngine.Profiling.Memory.Experimental;
 using Object = UnityEngine.Object;
 
 namespace UnityInterface
@@ -519,30 +520,7 @@ namespace UnityInterface
     {
         public class Texture2DLoader : IAssetLoader<Texture2D>
         {
-            public Texture2D LoadAsset(string path) => LoadAssetWithMetadata(path, path.GetMetadata(new Texture2DMetadata()));
-            public static Texture2D LoadAssetWithMetadata(string path, Texture2DMetadata metadata)
-            {
-                Texture2D texture = new Texture2D(1, 1);
-
-                texture.name = Path.GetFileNameWithoutExtension(path);
-                texture.wrapMode = metadata.wrapMode;
-                texture.filterMode = metadata.filterMode;
-
-                if (texture.LoadImage(File.ReadAllBytes(path), metadata.readable))
-                {
-                    return texture;
-                }
-
-                Debug.LogWarning("Could not Get texture from path");
-                return null;
-            }
-            [Serializable]
-            public class Texture2DMetadata
-            {
-                public bool readable;
-                public TextureWrapMode wrapMode;
-                public FilterMode filterMode;
-            }
+            public Texture2D LoadAsset(string path) => AssetManager.GetTexture2DFromPathSimple(path);
         }
         public class AudioClipLoader : IAssetLoader<AudioClip>
         {
@@ -558,23 +536,17 @@ namespace UnityInterface
                 }
 
                 Texture2D texture = AssetManager.GetTexture2DFromPathSimple(path);
-                SpriteMetadata metadata0 = path.GetMetadata(new SpriteMetadata()
-                {
-                    rect = new Rect(0, 0, texture.width, texture.height),
-                    pivot = Vector2.one * 0.5f,
-                    pixelPerUnit = 100
-                });
+                //SpriteMetadata metadata0 = path.GetMetadata(new SpriteMetadata()
+                //{
+                //    rect = ,
+                //    pivot =,
+                //    pixelPerUnit = 100
+                //});
 
-                Sprite s = Sprite.Create(Texture2DLoader.LoadAssetWithMetadata(path, metadata0), metadata0.rect, metadata0.pivot, metadata0.pixelPerUnit);
+                //       Sprite s = Sprite.Create(Texture2DLoader.LoadAssetWithMetadata(path, metadata0), metadata0.rect, metadata0.pivot, metadata0.pixelPerUnit);
+                Sprite s = Sprite.Create(AssetManager.GetTexture2DFromPathSimple(path), new Rect(0, 0, texture.width, texture.height), Vector2.one * 0.5f, 100);
                 s.name = texture.name;
                 return s;
-            }
-            [Serializable]
-            public class SpriteMetadata : Texture2DLoader.Texture2DMetadata
-            {
-                public Rect rect;
-                public Vector2 pivot;
-                public float pixelPerUnit;
             }
         }
         public class MeshLoader : IAssetLoader<Mesh>
