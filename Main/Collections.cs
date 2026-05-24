@@ -180,6 +180,6 @@ namespace UnityInterface
             }
             JsonUtility.FromJsonOverwrite(FromJson(File.ReadAllText(path), component.GetType()), component);
         }
-        public static void ApplyValues<T>(this T component) where T : Component => ApplyValues(component);
+        public static void ApplyValues<T>(this T component) where T : Component => component.ApplyValuesComponent();
     }
 }
