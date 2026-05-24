@@ -122,7 +122,7 @@ namespace UnityInterface
                 }
                 if (applyValues)
                 {
-                    types.ToList().ForEach(a => result.GetComponent(a).ApplyValues());
+                    types.ToList().ForEach(a => result.GetComponent(a).ApplyValuesComponent());
                 }
                 return result;
             }
@@ -170,7 +170,7 @@ namespace UnityInterface
         public static T Random<T>(params T[] selections) => selections[UnityEngine.Random.Range(0, selections.Length)];
         public static T Random<T>(this IEnumerable<T> selections, System.Random rng) => Random(rng, selections.ToArray());
         public static T Random<T>(System.Random rng, params T[] selections) => selections[rng.Next(0, selections.Length)];
-        public static void ApplyValues(this Component component)
+        public static void ApplyValuesComponent(this Component component)
         {
             string name = $"{component.name} {component.GetType().Name}";
             string path = Path.Combine(PluginManager.GetProjectFolder(PluginCore.Instance), $"{name}.json");
@@ -180,6 +180,6 @@ namespace UnityInterface
             }
             JsonUtility.FromJsonOverwrite(FromJson(File.ReadAllText(path), component.GetType()), component);
         }
-        public static void ApplyValues<T>(this T component) where T : Component => component.ApplyValues();
+        public static void ApplyValues<T>(this T component) where T : Component => ApplyValues(component);
     }
 }

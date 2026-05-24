@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using BepInEx;
@@ -466,7 +465,8 @@ namespace UnityInterface
         {
             if (__result == null)
             {
-                __result = Resources.LoadAll(path, systemTypeInstance).FirstOrDefault();
+                Object[] array = Resources.LoadAll(path, systemTypeInstance);
+                __result = array.Where(a => a.name.Equals(path)).FirstOrDefault() ?? array.FirstOrDefault();
             }
         }
         [HarmonyPatch(typeof(Resources), "LoadAll", typeof(string), typeof(Type)), HarmonyPostfix]
