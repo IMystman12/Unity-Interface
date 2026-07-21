@@ -9,8 +9,10 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.Networking;
-using UnityEngine.Profiling.Memory.Experimental;
+using System.CodeDom.Compiler;
 using Object = UnityEngine.Object;
+using Microsoft.CSharp;
+using System.Reflection;
 
 namespace UnityInterface
 {
@@ -21,6 +23,22 @@ namespace UnityInterface
     }
     public static class PluginManager
     {
+        static CSharpCodeProvider cSharpCodeProvider = new CSharpCodeProvider();
+        static CompilerParameters compilerParameters = new CompilerParameters()
+        {
+            GenerateInMemory = true
+        };
+        public static Type LoadComponent<T>(string scriptContent) where T : Component => LoadCodes(scriptContent).GetTypes().Where(a => typeof(T).IsAssignableFrom(a)).FirstOrDefault();
+        public static Assembly LoadCodes(string scriptContent)
+        {
+            var c = cSharpCodeProvider.CompileAssemblyFromSource(compilerParameters, scriptContent);
+            if (c.Errors.HasErrors)
+            {
+                Debug.LogError(c.Errors.ToString());
+                return null;
+            }
+            return c.CompiledAssembly;
+        }
         #region"Done"
         private static bool CheckDirectory(string path, BaseUnityPlugin requester) => CheckDirectory(path, queueToGenerate.Contains(requester));
         internal static List<Type> types = new List<Type>();
@@ -104,7 +122,10 @@ namespace UnityInterface
         }
         internal static void InjectPluginDLLs()
         {
-            AddType(AppDomain.CurrentDomain.GetAssemblies().SelectMany(a => a.GetTypes()).ToArray().UniqueCheck());
+            var array = AppDomain.CurrentDomain.GetAssemblies();
+            compilerParameters.ReferencedAssemblies.Clear();
+            compilerParameters.ReferencedAssemblies.AddRange(array.Select(a => a.Location).ToArray().UniqueCheck());
+            AddType(array.SelectMany(a => a.GetTypes()).ToArray().UniqueCheck());
             Log($"Founded total types count: {types.Count} and ScriptableObject types count: {foundedScriptableObjectTypes.Count}.");
         }
         public static void AddType<T>() => AddType(typeof(T));
