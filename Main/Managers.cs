@@ -479,7 +479,7 @@ namespace UnityInterface
         #endregion
         #region "Resource Patch"
         [HarmonyPatch(typeof(Resources), "FindObjectsOfTypeAll", typeof(Type)), HarmonyPostfix]
-        static void PostFix(Type type, ref Object[] __result) => __result = __result.AddAs(GetAsset(type));
+        static void PostFix(Type type, ref Object[] __result) => __result = (__result.AddAs(GetAsset(type))).UniqueCheck();
 
         [HarmonyPatch(typeof(Resources), "Load", typeof(string), typeof(Type)), HarmonyPostfix]
         static void PostFix(string path, Type systemTypeInstance, ref Object __result)
