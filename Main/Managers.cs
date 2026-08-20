@@ -23,22 +23,6 @@ namespace UnityInterface
     }
     public static class PluginManager
     {
-        static CSharpCodeProvider cSharpCodeProvider = new CSharpCodeProvider();
-        static CompilerParameters compilerParameters = new CompilerParameters()
-        {
-            GenerateInMemory = true
-        };
-        public static Type LoadComponent<T>(string scriptContent) where T : Component => LoadCodes(scriptContent).GetTypes().Where(a => typeof(T).IsAssignableFrom(a)).FirstOrDefault();
-        public static Assembly LoadCodes(string scriptContent)
-        {
-            var c = cSharpCodeProvider.CompileAssemblyFromSource(compilerParameters, scriptContent);
-            if (c.Errors.HasErrors)
-            {
-                Debug.LogError(c.Errors.ToString());
-                return null;
-            }
-            return c.CompiledAssembly;
-        }
         #region"Done"
         private static bool CheckDirectory(string path, BaseUnityPlugin requester) => CheckDirectory(path, queueToGenerate.Contains(requester));
         internal static List<Type> types = new List<Type>();
@@ -53,42 +37,26 @@ namespace UnityInterface
         /// <param name="summaries"></param>
         /// <returns></returns>
         public static T QuickOption<T>(this BaseUnityPlugin plugin, string name, T defualtVal, string summaries = "") => plugin.Config.Bind(new ConfigDefinition(summaries, name), defualtVal).Value;
-        /// <summary>
-        /// Return the folder: Project_{GUID} full path.
-        /// </summary>
-        /// <param name="GUID">Customized GUID</param>
-        /// <returns></returns>
-        public static string GetProjectFolder(string GUID) => Path.Combine(Application.streamingAssetsPath, "Projects", $"Project_{GUID}");
+
         /// <summary>
         /// Return the folder: Project_{plugin.Info.Metadata.GUID} full path.
         /// </summary>
         /// <param name="plugin">Folder's owner</param>
         /// <returns></returns>
-        public static string GetProjectFolder(BaseUnityPlugin plugin) => GetProjectFolder(plugin.Info.Metadata.GUID);
+        public static string GetProjectFolder(BaseUnityPlugin plugin) => Path.Combine(Application.streamingAssetsPath, "Projects", $"Project_{plugin.Info.Metadata.GUID}");
 
-        internal static List<BaseUnityPlugin> queueToLoad = new List<BaseUnityPlugin>(), queueToGenerate = new List<BaseUnityPlugin>(), queueRequiredReference = new List<BaseUnityPlugin>();
+        internal static List<BaseUnityPlugin> queueToLoad = new List<BaseUnityPlugin>(), queueToGenerate = new List<BaseUnityPlugin>();
         public static void IntializeBaseOptions(this BaseUnityPlugin plugin)
         {
-            bool a = plugin.QuickOption("Load assets automatically", false),
-                b = plugin.QuickOption("Generate if not exsists", false),
-                c = plugin.QuickOption("Generate references", false);
-            if (a)
+            bool flag = (PluginCore.Instance == plugin), a, b;
+
+            b = plugin.QuickOption("Generate if not exists", false) || flag;
+
+            queueToLoad.AddIfNotExsist(plugin);
+
+            if (b)
             {
-                if (!queueToLoad.Contains(plugin))
-                {
-                    queueToLoad.Add(plugin);
-                }
-                if (b)
-                {
-                    if (!queueToGenerate.Contains(plugin))
-                    {
-                        queueToGenerate.Add(plugin);
-                    }
-                    if (c && !queueRequiredReference.Contains(plugin))
-                    {
-                        queueRequiredReference.Add(plugin);
-                    }
-                }
+                queueToGenerate.AddIfNotExsist(plugin);
             }
         }
         internal static void Log(string log)
@@ -123,8 +91,8 @@ namespace UnityInterface
         internal static void InjectPluginDLLs()
         {
             var array = AppDomain.CurrentDomain.GetAssemblies();
-            compilerParameters.ReferencedAssemblies.Clear();
-            compilerParameters.ReferencedAssemblies.AddRange(array.Select(a => a.Location).ToArray().UniqueCheck());
+            ResourcesManager.compilerParameters.ReferencedAssemblies.Clear();
+            ResourcesManager.compilerParameters.ReferencedAssemblies.AddRange(array.Select(a => a.Location).ToArray().UniqueCheck());
             AddType(array.SelectMany(a => a.GetTypes()).ToArray().UniqueCheck());
             Log($"Founded total types count: {types.Count} and ScriptableObject types count: {foundedScriptableObjectTypes.Count}.");
         }
@@ -133,16 +101,15 @@ namespace UnityInterface
         {
             foreach (var a in typez)
             {
-                if (types.Contains(a))
-                {
-                    Log($"{a} was addend!");
-                    continue;
-                }
                 if (a.ContainsAttribute(typeof(SkipScanning)))
                 {
                     continue;
                 }
-                types.Add(a);
+                if (!types.AddIfNotExsist(a))
+                {
+                    Log($"{a} was addend!");
+                    continue;
+                }
                 if (!a.IsAbstract)
                 {
                     if (typeof(ScriptableObject).IsAssignableFrom(a))
@@ -159,12 +126,12 @@ namespace UnityInterface
         private static void LoadSpecificedAssets(BaseUnityPlugin plugin)
         {
             string pathTemp;
-            foreach (var itm in AssetManager.assetLoaders.Keys)
+            foreach (var itm in ResourcesManager.assetLoaders.Keys)
             {
                 pathTemp = Path.Combine(GetProjectFolder(plugin), itm.Name);
                 if (CheckDirectory(pathTemp, plugin))
                 {
-                    Collections.GetAllFiles(pathTemp).ToList().ForEach(c => AssetManager.LoadFromPath(c, itm));
+                    Collections.GetAllFiles(pathTemp).ToList().ForEach(c => ResourcesManager.LoadFromPath(c, itm));
                 }
             }
         }
@@ -188,14 +155,8 @@ namespace UnityInterface
                     curPath = Path.Combine(startPath, itmType.Name);
                     if (CheckDirectory(curPath, plugin))
                     {
-                        if (queueRequiredReference.Contains(plugin))
+                        if (PluginCore.Instance == plugin)
                         {
-                            templatePath = Path.Combine(curPath, "Template.json");
-                            if (queueToGenerate.Contains(plugin) && !File.Exists(templatePath))
-                            {
-                                AssetManager.GetScriptableObjectOrCreate("Template", templatePath, itmType);
-                            }
-
                             templatePath = Path.Combine(curPath, "References");
                             if (!Directory.Exists(templatePath))
                             {
@@ -204,7 +165,7 @@ namespace UnityInterface
                                 foreach (var itm in Resources.FindObjectsOfTypeAll(itmType))
                                 {
                                     s = Path.Combine(templatePath, $"Reference_{itm.name}.json");
-                                    File.WriteAllText(s, AssetManager.ToJson(itm));
+                                    File.WriteAllText(s, ResourcesManager.ToJson(itm));
                                 }
                             }
                         }
@@ -213,7 +174,7 @@ namespace UnityInterface
                         {
                             scriptableObject = ScriptableObject.CreateInstance(itmType);
                             scriptableObject.name = Path.GetFileNameWithoutExtension(itmPath);
-                            AssetManager.AddAsset(scriptableObject);
+                            ResourcesManager.Add(scriptableObject);
                         }
                     }
                 }
@@ -234,7 +195,7 @@ namespace UnityInterface
                         {
                             try
                             {
-                                JsonUtility.FromJsonOverwrite(AssetManager.FromJson(File.ReadAllText(itmPath), itmType), AssetManager.GetAsset(itmType, Path.GetFileNameWithoutExtension(itmPath)).First());
+                                JsonUtility.FromJsonOverwrite(ResourcesManager.FromJson(File.ReadAllText(itmPath), itmType), ResourcesManager.Get(itmType, Path.GetFileNameWithoutExtension(itmPath)));
                             }
                             catch
                             {
@@ -247,9 +208,11 @@ namespace UnityInterface
         }
         #endregion
     }
-
+    /// <summary>
+    /// Manager assets from base game or loaded.
+    /// </summary>
     [HarmonyPatch]
-    public static class AssetManager
+    public static class ResourcesManager
     {
         public static string ToJson(object obj) => ReplaceInstanceIDs(obj.GetType(), JsonUtility.ToJson(obj, true), true);
         public static string FromJson(string json, Type type) => ReplaceInstanceIDs(type, json, false);
@@ -276,7 +239,7 @@ namespace UnityInterface
                 Object a = assetLoaders[type].LoadAsset(path);
                 if (a)
                 {
-                    AddAsset(a);
+                    Add(a);
                 }
             }
             catch (Exception e)
@@ -284,7 +247,7 @@ namespace UnityInterface
                 Log($"FAILED! Path:{path} Exception:{e}");
             }
         }
-        public static void AddAsset<T>(T asset) where T : Object
+        public static void Add<T>(T asset) where T : Object
         {
             Type type = asset.GetType();
             if (!loadedAssets.ContainsKey(type))
@@ -331,31 +294,28 @@ namespace UnityInterface
             }
         }
         public static void SetAsPrefab(GameObject prefab) => prefab.transform.SetParent(prefabParent);
-        public static Object[] GetAsset(Type type)
+
+        public static Object[] Get(Type type)
         {
-            List<Object> result = loadedAssets.TryGetValue(type, out var val) ? val.Values.ToList() : new List<Object>();
+            List<Object> result = new List<Object>(Resources.FindObjectsOfTypeAll(type));
+            if (loadedAssets.TryGetValue(type, out var val))
+            {
+                result.AddRange(val.Values);
+            }
             if (typeof(Component).IsAssignableFrom(type))
             {
                 result.AddRange(prefabParent.GetComponentsInChildren(type, true));
             }
             return result.ToArray().UniqueCheck();
         }
-        public static T[] GetAsset<T>() where T : Object => GetAsset(typeof(T)).OfType<T>().ToArray();
-        public static Object[] GetAsset(Type type, string name) => GetAsset(type).Where(a => a.name == name).ToArray();
-        public static T[] GetAsset<T>(string name) where T : Object => GetAsset(typeof(T), name).OfType<T>().ToArray();
-        public static ScriptableObject CreateAndSaveScriptableObject(string name, string path, Type type)
-        {
-            ScriptableObject scriptableObject = ScriptableObject.CreateInstance(type);
-            SaveScriptableObject(scriptableObject, type, path);
-            return scriptableObject;
-        }
-        public static void SaveScriptableObject<T>(ScriptableObject scriptableObject) where T : ScriptableObject => SaveScriptableObject(scriptableObject, typeof(T), PluginCore.Instance.GetAssetedPathAndGenerate<T>(scriptableObject.name));
-        public static void SaveScriptableObject(ScriptableObject scriptableObject, Type type, string path) => File.WriteAllText(path, ReplaceInstanceIDs(type, JsonUtility.ToJson(scriptableObject), true));
-        public static T CreateAndSaveScriptableObject<T>(string name, string path) where T : ScriptableObject => (T)CreateAndSaveScriptableObject(name, path, typeof(T));
-        public static T GetScriptableObjectOrCreate<T>(string name) where T : ScriptableObject => PluginCore.Instance.GetScriptableObjectOrCreate<T>(name);
-        public static T GetScriptableObjectOrCreate<T>(this BaseUnityPlugin plugin, string name) where T : ScriptableObject => GetScriptableObjectOrCreate<T>(name, plugin.GetAssetedPathAndGenerate<T>(name));
-        public static T GetScriptableObjectOrCreate<T>(string name, string path) where T : ScriptableObject => (T)GetScriptableObjectOrCreate(name, path, typeof(T));
-        public static ScriptableObject GetScriptableObjectOrCreate(string name, string path, Type type) => (ScriptableObject)Resources.Load(name, type) ?? CreateAndSaveScriptableObject(name, path, type);
+        public static T[] Get<T>() where T : Object => Get(typeof(T)).OfType<T>().ToArray();
+
+        public static Object[] GetAll(Type type, string name) => Get(type).Where(a => a.name == name).ToArray();
+        public static T[] GetAll<T>(string name) where T : Object => GetAll(typeof(T), name).OfType<T>().ToArray();
+
+        public static Object Get(Type type, string name) => Get(type).FirstOrDefault(a => a.name == name);
+        public static T Get<T>(string name) where T : Object => (T)Get(typeof(T), name);
+
         internal static bool serializeMod;
         private static string ReplaceInstanceIDs(Type type, string json, bool serialize)
         {
@@ -382,7 +342,7 @@ namespace UnityInterface
                         }
                         else
                         {
-                            prop.Value = (propVal == "null") ? 0 : Resources.Load(propVal, type).GetInstanceID();
+                            prop.Value = (propVal == "null") ? 0 : Get(type, propVal).GetInstanceID();
                         }
                     }
                     fieldType = type.GetField(prop.Name, Collections.bindingFlagsDefualt)?.FieldType;
@@ -426,6 +386,65 @@ namespace UnityInterface
             }
             return token;
         }
+        public static T GetMetadata<T>(this string pathBase, T defualt) where T : class
+        {
+            if (Path.GetExtension(pathBase) == ".meta")
+            {
+                return null;
+            }
+            string metaPath = pathBase.ReplaceExtension(".meta");
+            T metadata0 = null;
+            if (File.Exists(metaPath))
+            {
+                metadata0 = JsonUtility.FromJson<T>(File.ReadAllText(metaPath));
+            }
+            if (metadata0 == null)
+            {
+                File.WriteAllText(metaPath, JsonUtility.ToJson(defualt));
+            }
+            metadata0 = JsonUtility.FromJson<T>(File.ReadAllText(metaPath));
+            return metadata0;
+        }
+        #region "Scriptable Objects"
+        public static T GetScriptableObjectOrCreate<T>(this BaseUnityPlugin plugin, string name) where T : ScriptableObject
+        {
+            T result = Get<T>(name);
+            if (!result)
+            {
+                result = ScriptableObject.CreateInstance<T>();
+                SaveScriptableObject<T>(plugin, result);
+            }
+            return result;
+        }
+        public static void SaveScriptableObject<T>(this BaseUnityPlugin plugin, ScriptableObject itm) where T : ScriptableObject => File.WriteAllText(Path.Combine(PluginManager.GetProjectFolder(plugin), "ScriptableObject", typeof(T).Name, $"{itm.name}.json"), ToJson(itm));
+        #endregion
+        #region "Script"
+        internal static CSharpCodeProvider cSharpCodeProvider = new CSharpCodeProvider();
+        internal static CompilerParameters compilerParameters = new CompilerParameters()
+        {
+            GenerateInMemory = true
+        };
+        public static Type LoadComponent<T>(string scriptContent) where T : Component => LoadCodes(scriptContent).GetTypes().Where(a => typeof(T).IsAssignableFrom(a)).FirstOrDefault();
+        public static Assembly LoadCodes(string scriptContent)
+        {
+            var c = cSharpCodeProvider.CompileAssemblyFromSource(compilerParameters, scriptContent);
+            if (c.Errors.HasErrors)
+            {
+                Debug.LogError(c.Errors.ToString());
+                return null;
+            }
+            var a = c.CompiledAssembly;
+            try
+            {
+                compilerParameters.ReferencedAssemblies.Add(a.Location);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError(ex.ToString());
+            }
+            return a;
+        }
+        #endregion
         #region "Built-in Assets Loading"
         public static Texture2D GetTexture2DFromPathSimple(string path)
         {
@@ -469,29 +488,14 @@ namespace UnityInterface
             {
                 return null;
             }
+
             AssetBundle ab = AssetBundle.LoadFromFile(path);
             foreach (var item in ab.LoadAllAssets())
             {
-                AddAsset(item);
+                Add(item);
             }
             return ab;
         }
-        #endregion
-        #region "Resource Patch"
-        [HarmonyPatch(typeof(Resources), "FindObjectsOfTypeAll", typeof(Type)), HarmonyPostfix]
-        static void PostFix(Type type, ref Object[] __result) => __result = (__result.AddAs(GetAsset(type))).UniqueCheck();
-
-        [HarmonyPatch(typeof(Resources), "Load", typeof(string), typeof(Type)), HarmonyPostfix]
-        static void PostFix(string path, Type systemTypeInstance, ref Object __result)
-        {
-            if (__result == null)
-            {
-                Object[] array = Resources.LoadAll(path, systemTypeInstance);
-                __result = array.Where(a => a.name.Equals(path)).FirstOrDefault() ?? array.FirstOrDefault();
-            }
-        }
-        [HarmonyPatch(typeof(Resources), "LoadAll", typeof(string), typeof(Type)), HarmonyPostfix]
-        static void PostFix0(string path, Type systemTypeInstance, ref Object[] __result) => __result = Resources.FindObjectsOfTypeAll(systemTypeInstance).Where(a => a.name.Contains(path)).ToArray();
         #endregion
         #region "Enum"     
         private static Dictionary<Type, List<string>> extraEnums = new Dictionary<Type, List<string>>();
@@ -511,18 +515,24 @@ namespace UnityInterface
                 extraEnumsCount.Add(type, Enum.GetNames(type).Length + 1);
                 sampleMode = false;
             }
-            if (!extraEnums[type].Contains(name))
-            {
-                extraEnums[type].Add(name);
-            }
+            extraEnums[type].AddIfNotExsist(name);
             return extraEnumsCount[type] + extraEnums[type].IndexOf(name);
         }
 
         [HarmonyPatch(typeof(Enum), "GetNames"), HarmonyPostfix]
         private static void Postfix_GetNames(Type enumType, ref string[] __result)
         {
+            if (enumType == null)
+            {
+                return;
+            }
             if (sampleMode || !extraEnums.ContainsKey(enumType))
             {
+                return;
+            }
+            if (!enumType.IsEnum)
+            {
+                Log($"Type: {enumType} isn't an enum!");
                 return;
             }
             __result = __result.AddAs(extraEnums[enumType].ToArray());
@@ -530,6 +540,10 @@ namespace UnityInterface
         [HarmonyPatch(typeof(Enum), "GetName"), HarmonyPostfix]
         private static void Postfix_GetName(Type enumType, object value, ref string __result)
         {
+            if (Convert.IsDBNull(value))
+            {
+                return;
+            }
             int v = (int)value;
             if (sampleMode || !extraEnums.ContainsKey(enumType) || v < extraEnumsCount[enumType])
             {
@@ -548,11 +562,11 @@ namespace UnityInterface
     {
         public class Texture2DLoader : IAssetLoader<Texture2D>
         {
-            public Texture2D LoadAsset(string path) => AssetManager.GetTexture2DFromPathSimple(path);
+            public Texture2D LoadAsset(string path) => ResourcesManager.GetTexture2DFromPathSimple(path);
         }
         public class AudioClipLoader : IAssetLoader<AudioClip>
         {
-            public AudioClip LoadAsset(string path) => AssetManager.GetAudioClipFromPath(path);
+            public AudioClip LoadAsset(string path) => ResourcesManager.GetAudioClipFromPath(path);
         }
         public class SpriteLoader : IAssetLoader<Sprite>
         {
@@ -563,7 +577,7 @@ namespace UnityInterface
                     return null;
                 }
 
-                Texture2D texture = AssetManager.GetTexture2DFromPathSimple(path);
+                Texture2D texture = ResourcesManager.GetTexture2DFromPathSimple(path);
                 Sprite s = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), Vector2.one * 0.5f, 100);
                 s.name = texture.name;
                 return s;
@@ -571,11 +585,11 @@ namespace UnityInterface
         }
         public class MeshLoader : IAssetLoader<Mesh>
         {
-            public Mesh LoadAsset(string path) => AssetManager.GetMeshFromPath(path);
+            public Mesh LoadAsset(string path) => ResourcesManager.GetMeshFromPath(path);
         }
         public class AssetBundleLoader : IAssetLoader<AssetBundle>
         {
-            public AssetBundle LoadAsset(string path) => AssetManager.GetAssetBundleFromPath(path);
+            public AssetBundle LoadAsset(string path) => ResourcesManager.GetAssetBundleFromPath(path);
         }
     }
 }

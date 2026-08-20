@@ -3,11 +3,13 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using BepInEx;
 using HarmonyLib;
 using Mono.Cecil;
 using UnityEngine;
+using UnityEngine.Events;
 using static Mono.Security.X509.X520;
-using static UnityInterface.AssetManager;
+using static UnityInterface.ResourcesManager;
 
 namespace UnityInterface
 {
@@ -90,50 +92,29 @@ namespace UnityInterface
         public static bool ContainsInterface(this Type interfaceType, Type typeBase) => typeBase.GetInterfaces().Any(a => a.IsGenericType && a.GetGenericTypeDefinition() == interfaceType);
         public static Type GetConstGenericedType(this Type typeBase, Type interfaceType) => typeBase.GetInterfaces().Where(a => a.IsGenericType && a.GetGenericTypeDefinition() == interfaceType).FirstOrDefault()?.GetGenericArguments()?.FirstOrDefault();
         public static bool ContainsAttribute(this Type typeBase, Type attributeType) => typeBase.CustomAttributes.Any(a => attributeType.IsAssignableFrom(a.GetType()));
-        public static string ReplaceExtension(this string pathBase, string extension) => $"{pathBase.Remove(pathBase.Length - Path.GetExtension(pathBase).Length)}{extension}";
-        public static T GetMetadata<T>(this string pathBase, T defualt) where T : class
-        {
-            if (Path.GetExtension(pathBase) == ".meta")
-            {
-                return null;
-            }
-            string metaPath = pathBase.ReplaceExtension(".meta");
-            T metadata0 = null;
-            if (File.Exists(metaPath))
-            {
-                metadata0 = JsonUtility.FromJson<T>(File.ReadAllText(metaPath));
-            }
-            if (metadata0 == null)
-            {
-                File.WriteAllText(metaPath, JsonUtility.ToJson(defualt));
-            }
-            metadata0 = JsonUtility.FromJson<T>(File.ReadAllText(metaPath));
-            return metadata0;
-        }
-        public static T ToGameObject<T>(this object header, bool toPrefab = false, bool applyValues = false) => header.ToGameObject(toPrefab, applyValues, typeof(T)).GetComponent<T>();
-        public static GameObject ToGameObject(this object header, bool toPrefab, bool applyValues, params Type[] types)
+        public static string ReplaceExtension(this string pathBase, string extension) => $"{pathBase.Substring(0, Path.GetExtension(pathBase).Length)}{extension}";
+        public static T ToGameObject<T>(this BaseUnityPlugin plugin, bool toPrefab = false, bool applyValues = false) => plugin.ToGameObject(toPrefab, applyValues, typeof(T)).GetComponent<T>();
+        public static GameObject ToGameObject(this BaseUnityPlugin plugin, bool toPrefab, bool applyValues, params Type[] types)
         {
             if (types.Length > 0)
             {
-                GameObject result = new GameObject(types.First().Name, types);
+                GameObject result = new GameObject(types.First().Name);
+
                 if (toPrefab)
                 {
-                    AssetManager.SetAsPrefab(result);
+                    ResourcesManager.SetAsPrefab(result);
                 }
+
+                foreach (var a in types)
+                {
+                    result.AddComponent(a);
+                }
+
                 if (applyValues)
                 {
-                    types.ToList().ForEach(a => result.GetComponent(a).ApplyValuesComponent());
+                    types.ToList().ForEach(a => result.GetComponent(a).ApplyValuesComponent(plugin));
                 }
                 return result;
-            }
-            return null;
-        }
-        public static T FirstOrNull<T>(this IEnumerable<T> values) => values.FirstOrDefault();
-        public static Type GetFieldType(this Type typeBase, string name)
-        {
-            if (typeBase.ContainsField(name))
-            {
-                return typeBase.GetField(name, bindingFlagsDefualt).FieldType;
             }
             return null;
         }
@@ -145,7 +126,7 @@ namespace UnityInterface
         /// <returns>Replaced script(C)</returns>
         public static C Rescript<O, C>(O source) where O : MonoBehaviour where C : MonoBehaviour
         {
-            O pref = GameObject.Instantiate(source, AssetManager.prefabParent);
+            O pref = GameObject.Instantiate(source, ResourcesManager.prefabParent);
 
             GameObject a = pref.gameObject;
             a.name = typeof(C).Name;
@@ -165,21 +146,58 @@ namespace UnityInterface
         /// <typeparam name="O">Script(O) type</typeparam>
         /// <typeparam name="C">Script(C) type</typeparam>
         /// <returns>Replaced script(C)</returns>
-        public static C Rescript<O, C>() where O : MonoBehaviour where C : MonoBehaviour => Rescript<O, C>(Resources.FindObjectsOfTypeAll<O>().First());
+        public static C Rescript<O, C>() where O : MonoBehaviour where C : MonoBehaviour => Rescript<O, C>(ResourcesManager.Get<O>().First());
         public static T Random<T>(this IEnumerable<T> selections) => Random(selections.ToArray());
         public static T Random<T>(params T[] selections) => selections[UnityEngine.Random.Range(0, selections.Length)];
         public static T Random<T>(this IEnumerable<T> selections, System.Random rng) => Random(rng, selections.ToArray());
         public static T Random<T>(System.Random rng, params T[] selections) => selections[rng.Next(0, selections.Length)];
-        public static void ApplyValuesComponent(this Component component)
+        public static void ApplyValuesComponent(this Component component, BaseUnityPlugin plugin)
         {
             string name = $"{component.name} {component.GetType().Name}";
-            string path = Path.Combine(PluginManager.GetProjectFolder(PluginCore.Instance), $"{name}.json");
+            string path = Path.Combine(PluginManager.GetProjectFolder(plugin), $"{name}.json");
             if (!File.Exists(path))
             {
                 File.WriteAllText(path, ToJson(component));
             }
             JsonUtility.FromJsonOverwrite(FromJson(File.ReadAllText(path), component.GetType()), component);
         }
-        public static void ApplyValues<T>(this T component) where T : Component => component.ApplyValuesComponent();
+        public static void ApplyValues<T>(this T component, BaseUnityPlugin plugin) where T : Component => component.ApplyValuesComponent(plugin);
+        /// <summary>
+        /// Return true mean this itm was addend into list.
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="list"></param>
+        /// <param name="itm"></param>
+        /// <returns></returns>
+        public static bool AddIfNotExsist<T>(this List<T> list, T itm)
+        {
+            if (!list.Contains(itm))
+            {
+                list.Add(itm);
+                return true;
+            }
+            return false;
+        }
+        /// <summary>
+        /// Scroll the int in [0,EnumLength-1]. Enum must be int-based.
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="enumBase"></param>
+        /// <param name="direction"></param>
+        /// <returns></returns>
+        public static T ScrollEnum<T>(this T enumBase, int direction, int customLengthSubtract = 1) where T : Enum
+        {
+            var val = ((int)(object)enumBase) + direction;
+            int max = Enum.GetNames(typeof(T)).Length - customLengthSubtract;
+            if (val < 0)
+            {
+                return (T)(object)max;
+            }
+            if (val > max)
+            {
+                return (T)(object)0;
+            }
+            return (T)(object)val;
+        }
     }
 }
