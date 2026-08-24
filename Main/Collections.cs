@@ -71,7 +71,20 @@ namespace UnityInterface
                          });
         }
         internal static BindingFlags bindingFlagsDefualt => BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
-        public static List<string> GetFieldsWithParents(this Type type) => type.GetFields(bindingFlagsDefualt).Select(a => a.Name).ToList();
+        public static List<string> GetFieldsWithParents(this Type type)
+        {
+            int i = 0;
+            Type t = type;
+            List<string> result = new List<string>();
+            while (t != null&& t != typeof(UnityEngine.Object)&&t!=typeof(object))
+            {
+                result.AddRange(t.GetFields(bindingFlagsDefualt).Select(a => a.Name));
+                t = t.BaseType;
+                i++;
+            }
+            result = result.Distinct().ToList();
+            return result;
+        }
         public static string[] GetAllFiles(string path, string extensionWithDot = "") => Directory.GetFiles(path, $"*{extensionWithDot}", SearchOption.AllDirectories);
         [Obsolete("Use List<T>.Foreach() instead!", true)] public static void Foreach() => throw new Exception("It's unless!");
         public static T[] FindWithInactiveAll<T>(this UnityEngine.Object obj, string name) where T : UnityEngine.Object => GameObject.FindObjectsOfType<T>(true).Where(a => a.name == name).ToArray();
@@ -126,7 +139,7 @@ namespace UnityInterface
         /// <returns>Replaced script(C)</returns>
         public static C Rescript<O, C>(O source) where O : MonoBehaviour where C : MonoBehaviour
         {
-            O pref = GameObject.Instantiate(source, ResourcesManager.prefabParent);
+            O pref = GameObject.Instantiate(source, prefabParent);
 
             GameObject a = pref.gameObject;
             a.name = typeof(C).Name;
@@ -146,7 +159,7 @@ namespace UnityInterface
         /// <typeparam name="O">Script(O) type</typeparam>
         /// <typeparam name="C">Script(C) type</typeparam>
         /// <returns>Replaced script(C)</returns>
-        public static C Rescript<O, C>() where O : MonoBehaviour where C : MonoBehaviour => Rescript<O, C>(ResourcesManager.Get<O>().First());
+        public static C Rescript<O, C>() where O : MonoBehaviour where C : MonoBehaviour => Rescript<O, C>(Get<O>().First());
         public static T Random<T>(this IEnumerable<T> selections) => Random(selections.ToArray());
         public static T Random<T>(params T[] selections) => selections[UnityEngine.Random.Range(0, selections.Length)];
         public static T Random<T>(this IEnumerable<T> selections, System.Random rng) => Random(rng, selections.ToArray());
