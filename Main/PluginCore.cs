@@ -30,8 +30,6 @@ namespace UnityInterface
             new Harmony("imystman12.unity.interface").PatchAll();
             assetSystemLog = this.QuickOption("Asset System Logger", false);
             pluginManagerLog = this.QuickOption("Plugin Manager Logger", false);
-
-            this.IntializeBaseOptions();
         }
         IEnumerator Start()
         {

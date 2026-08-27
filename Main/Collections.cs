@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using BepInEx;
 using HarmonyLib;
 using Mono.Cecil;
@@ -76,7 +77,7 @@ namespace UnityInterface
             int i = 0;
             Type t = type;
             List<string> result = new List<string>();
-            while (t != null&& t != typeof(UnityEngine.Object)&&t!=typeof(object))
+            while (t != null && t != typeof(UnityEngine.Object) && t != typeof(object))
             {
                 result.AddRange(t.GetFields(bindingFlagsDefualt).Select(a => a.Name));
                 t = t.BaseType;
@@ -105,7 +106,7 @@ namespace UnityInterface
         public static bool ContainsInterface(this Type interfaceType, Type typeBase) => typeBase.GetInterfaces().Any(a => a.IsGenericType && a.GetGenericTypeDefinition() == interfaceType);
         public static Type GetConstGenericedType(this Type typeBase, Type interfaceType) => typeBase.GetInterfaces().Where(a => a.IsGenericType && a.GetGenericTypeDefinition() == interfaceType).FirstOrDefault()?.GetGenericArguments()?.FirstOrDefault();
         public static bool ContainsAttribute(this Type typeBase, Type attributeType) => typeBase.CustomAttributes.Any(a => attributeType.IsAssignableFrom(a.GetType()));
-        public static string ReplaceExtension(this string pathBase, string extension) => $"{pathBase.Substring(0, Path.GetExtension(pathBase).Length)}{extension}";
+        public static string ReplaceExtension(this string pathBase, string extension) => Path.ChangeExtension(pathBase, extension);
         public static T ToGameObject<T>(this BaseUnityPlugin plugin, bool toPrefab = false, bool applyValues = false) => plugin.ToGameObject(toPrefab, applyValues, typeof(T)).GetComponent<T>();
         public static GameObject ToGameObject(this BaseUnityPlugin plugin, bool toPrefab, bool applyValues, params Type[] types)
         {
@@ -212,5 +213,6 @@ namespace UnityInterface
             }
             return (T)(object)val;
         }
+        public static string[] SafeSplit(this string s, params char[] seperator) => s.Split(seperator);
     }
 }

@@ -1,18 +1,20 @@
 using System;
+using System.CodeDom.Compiler;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using BepInEx;
+using BepInEx.Bootstrap;
 using BepInEx.Configuration;
 using HarmonyLib;
+using Microsoft.CSharp;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.Networking;
-using System.CodeDom.Compiler;
+using static UnityInterface.UnityInterface.Assets.ScriptLoader;
 using Object = UnityEngine.Object;
-using Microsoft.CSharp;
-using System.Reflection;
 
 namespace UnityInterface
 {
@@ -24,7 +26,6 @@ namespace UnityInterface
     public static class PluginManager
     {
         #region"Done"
-        private static bool CheckDirectory(string path, BaseUnityPlugin requester) => CheckDirectory(path, queueToGenerate.Contains(requester));
         internal static List<Type> types = new List<Type>();
         static List<Type> foundedScriptableObjectTypes = new List<Type>();
         /// <summary>
@@ -45,20 +46,7 @@ namespace UnityInterface
         /// <returns></returns>
         public static string GetProjectFolder(BaseUnityPlugin plugin) => Path.Combine(Application.streamingAssetsPath, "Projects", $"Project_{plugin.Info.Metadata.GUID}");
 
-        internal static List<BaseUnityPlugin> queueToLoad = new List<BaseUnityPlugin>(), queueToGenerate = new List<BaseUnityPlugin>();
-        public static void IntializeBaseOptions(this BaseUnityPlugin plugin)
-        {
-            bool flag = (PluginCore.Instance == plugin), a, b;
-
-            b = plugin.QuickOption("Generate if not exists", false) || flag;
-
-            queueToLoad.AddIfNotExsist(plugin);
-
-            if (b)
-            {
-                queueToGenerate.AddIfNotExsist(plugin);
-            }
-        }
+        internal static List<BaseUnityPlugin> queueToLoad = new List<BaseUnityPlugin>();
         internal static void Log(string log)
         {
             if (PluginCore.pluginManagerLog)
@@ -66,7 +54,7 @@ namespace UnityInterface
                 Debug.Log(log);
             }
         }
-        private static bool CheckDirectory(string path, bool generateFolder)
+        private static bool CheckDirectory(string path, bool generateFolder = false)
         {
             if (!Directory.Exists(path))
             {
@@ -123,13 +111,15 @@ namespace UnityInterface
                 }
             }
         }
+        static bool IsThisPlugin(BaseUnityPlugin plugin) => PluginCore.Instance == plugin;
         private static void LoadSpecificedAssets(BaseUnityPlugin plugin)
         {
             string pathTemp;
+            bool flag = IsThisPlugin(plugin);
             foreach (var itm in ResourcesManager.assetLoaders.Keys)
             {
                 pathTemp = Path.Combine(GetProjectFolder(plugin), itm.Name);
-                if (CheckDirectory(pathTemp, plugin))
+                if (CheckDirectory(pathTemp, flag))
                 {
                     Collections.GetAllFiles(pathTemp).ToList().ForEach(c => ResourcesManager.LoadFromPath(c, itm));
                 }
@@ -137,6 +127,7 @@ namespace UnityInterface
         }
         internal static void LoadAllPlugins()
         {
+            queueToLoad = Chainloader.PluginInfos.Values.Select(a => a.Instance).ToList();
             CheckDirectory(Path.Combine(Application.streamingAssetsPath, "Projects"), true);
             queueToLoad.ForEach(a => LoadSpecificedAssets(a));
             queueToLoad.ForEach(a => PrepareEmptyScriptableObjects(a));
@@ -146,14 +137,15 @@ namespace UnityInterface
         #region"ScriptableObject"
         private static void PrepareEmptyScriptableObjects(BaseUnityPlugin plugin)
         {
+            bool flag = IsThisPlugin(plugin);
             string startPath = Path.Combine(GetProjectFolder(plugin), "ScriptableObject"), curPath, templatePath;
             ScriptableObject scriptableObject;
-            if (CheckDirectory(startPath, plugin))
+            if (CheckDirectory(startPath, flag))
             {
                 foreach (var itmType in foundedScriptableObjectTypes)
                 {
                     curPath = Path.Combine(startPath, itmType.Name);
-                    if (CheckDirectory(curPath, plugin))
+                    if (CheckDirectory(curPath, flag))
                     {
                         if (PluginCore.Instance == plugin)
                         {
@@ -172,9 +164,16 @@ namespace UnityInterface
 
                         foreach (var itmPath in Collections.GetAllFiles(curPath, ".json").Where(a => "Template" != Path.GetFileNameWithoutExtension(a) && !a.Contains(Path.Combine(curPath, "References"))))
                         {
-                            scriptableObject = ScriptableObject.CreateInstance(itmType);
-                            scriptableObject.name = Path.GetFileNameWithoutExtension(itmPath);
-                            ResourcesManager.Add(scriptableObject);
+                            try
+                            {
+                                scriptableObject = ScriptableObject.CreateInstance(itmType);
+                                scriptableObject.name = Path.GetFileNameWithoutExtension(itmPath);
+                                ResourcesManager.Add(scriptableObject);
+                            }
+                            catch (Exception e)
+                            {
+                                Debug.LogWarning($"Type: {itmType.Name} Named: {Path.GetFileNameWithoutExtension(itmPath)} load failed at path: {itmPath}" + e);
+                            }
                         }
                     }
                 }
@@ -183,13 +182,14 @@ namespace UnityInterface
 
         private static void LoadScriptableObjects(BaseUnityPlugin plugin)
         {
+            bool flag = IsThisPlugin(plugin);
             string startPath = Path.Combine(GetProjectFolder(plugin), "ScriptableObject"), curPath;
-            if (CheckDirectory(startPath, plugin))
+            if (CheckDirectory(startPath, flag))
             {
                 foreach (var itmType in foundedScriptableObjectTypes)
                 {
                     curPath = Path.Combine(startPath, itmType.Name);
-                    if (CheckDirectory(curPath, plugin))
+                    if (CheckDirectory(curPath, flag))
                     {
                         foreach (var itmPath in Collections.GetAllFiles(curPath, ".json").Where(a => "Template" != Path.GetFileNameWithoutExtension(a) && !a.Contains(Path.Combine(curPath, "References"))))
                         {
@@ -197,9 +197,9 @@ namespace UnityInterface
                             {
                                 JsonUtility.FromJsonOverwrite(ResourcesManager.FromJson(File.ReadAllText(itmPath), itmType), ResourcesManager.Get(itmType, Path.GetFileNameWithoutExtension(itmPath)));
                             }
-                            catch
+                            catch (Exception e)
                             {
-                                Debug.LogWarning($"{Path.GetFileNameWithoutExtension(itmPath)} can't loaded!");
+                                Debug.LogWarning($"Type: {itmType.Name} Named: {Path.GetFileNameWithoutExtension(itmPath)} load failed at path: {itmPath}" + e);
                             }
                         }
                     }
@@ -236,7 +236,7 @@ namespace UnityInterface
             }
             try
             {
-                Object a = assetLoaders[type].LoadAsset(path);
+                Object a = assetLoaders[type].Load(path);
                 if (a)
                 {
                     Add(a);
@@ -540,12 +540,12 @@ namespace UnityInterface
         [HarmonyPatch(typeof(Enum), "GetName"), HarmonyPostfix]
         private static void Postfix_GetName(Type enumType, object value, ref string __result)
         {
-            if (Convert.IsDBNull(value))
+            if (!enumType.IsEnum || Convert.IsDBNull(value) || sampleMode || !extraEnums.ContainsKey(enumType))
             {
                 return;
             }
             int v = (int)value;
-            if (sampleMode || !extraEnums.ContainsKey(enumType) || v < extraEnumsCount[enumType])
+            if (v < extraEnumsCount[enumType])
             {
                 return;
             }
@@ -555,22 +555,22 @@ namespace UnityInterface
     }
     public interface IAssetLoader<out T> where T : Object
     {
-        T LoadAsset(string path);
+        T Load(string path);
     }
     #region"Asset Loaders"
     namespace UnityInterface.Assets
     {
         public class Texture2DLoader : IAssetLoader<Texture2D>
         {
-            public Texture2D LoadAsset(string path) => ResourcesManager.GetTexture2DFromPathSimple(path);
+            public Texture2D Load(string path) => ResourcesManager.GetTexture2DFromPathSimple(path);
         }
         public class AudioClipLoader : IAssetLoader<AudioClip>
         {
-            public AudioClip LoadAsset(string path) => ResourcesManager.GetAudioClipFromPath(path);
+            public AudioClip Load(string path) => ResourcesManager.GetAudioClipFromPath(path);
         }
         public class SpriteLoader : IAssetLoader<Sprite>
         {
-            public Sprite LoadAsset(string path)
+            public Sprite Load(string path)
             {
                 if (Path.GetExtension(path) == ".meta")
                 {
@@ -585,11 +585,20 @@ namespace UnityInterface
         }
         public class MeshLoader : IAssetLoader<Mesh>
         {
-            public Mesh LoadAsset(string path) => ResourcesManager.GetMeshFromPath(path);
+            public Mesh Load(string path) => ResourcesManager.GetMeshFromPath(path);
         }
         public class AssetBundleLoader : IAssetLoader<AssetBundle>
         {
-            public AssetBundle LoadAsset(string path) => ResourcesManager.GetAssetBundleFromPath(path);
+            public AssetBundle Load(string path) => ResourcesManager.GetAssetBundleFromPath(path);
+        }
+        public class ScriptLoader : IAssetLoader<AssemblyObject>
+        {
+            public AssemblyObject Load(string path) => new AssemblyObject() { assembly = ResourcesManager.LoadCodes(path) };
+        }
+        [Serializable]
+        public class AssemblyObject : Object
+        {
+            public Assembly assembly;
         }
     }
 }
