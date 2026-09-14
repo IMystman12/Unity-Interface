@@ -3,19 +3,16 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Runtime.CompilerServices;
 using BepInEx;
 using HarmonyLib;
-using Mono.Cecil;
 using UnityEngine;
 using UnityEngine.Events;
-using static Mono.Security.X509.X520;
 using static UnityInterface.ResourcesManager;
 
 namespace UnityInterface
 {
     /// <summary>
-    /// A sort of goods!
+    /// Useful Stuffs
     /// </summary>
     [HarmonyPatch]
     public static class Collections
@@ -106,7 +103,6 @@ namespace UnityInterface
         public static bool ContainsInterface(this Type interfaceType, Type typeBase) => typeBase.GetInterfaces().Any(a => a.IsGenericType && a.GetGenericTypeDefinition() == interfaceType);
         public static Type GetConstGenericedType(this Type typeBase, Type interfaceType) => typeBase.GetInterfaces().Where(a => a.IsGenericType && a.GetGenericTypeDefinition() == interfaceType).FirstOrDefault()?.GetGenericArguments()?.FirstOrDefault();
         public static bool ContainsAttribute(this Type typeBase, Type attributeType) => typeBase.CustomAttributes.Any(a => attributeType.IsAssignableFrom(a.GetType()));
-        public static string ReplaceExtension(this string pathBase, string extension) => Path.ChangeExtension(pathBase, extension);
         public static T ToGameObject<T>(this BaseUnityPlugin plugin, bool toPrefab = false, bool applyValues = false) => plugin.ToGameObject(toPrefab, applyValues, typeof(T)).GetComponent<T>();
         public static GameObject ToGameObject(this BaseUnityPlugin plugin, bool toPrefab, bool applyValues, params Type[] types)
         {
@@ -173,7 +169,7 @@ namespace UnityInterface
             {
                 File.WriteAllText(path, ToJson(component));
             }
-            JsonUtility.FromJsonOverwrite(FromJson(File.ReadAllText(path), component.GetType()), component);
+            JsonUtility.FromJsonOverwrite(PrepareJsonForOverwrite(File.ReadAllText(path), component.GetType()), component);
         }
         public static void ApplyValues<T>(this T component, BaseUnityPlugin plugin) where T : Component => component.ApplyValuesComponent(plugin);
         /// <summary>
@@ -214,5 +210,19 @@ namespace UnityInterface
             return (T)(object)val;
         }
         public static string[] SafeSplit(this string s, params char[] seperator) => s.Split(seperator);
+        public class UnityEventConverter
+        {
+            public readonly UnityEvent result = new UnityEvent();
+            public static implicit operator UnityEventConverter(Action a)
+            {
+                var c = new UnityEventConverter();
+                if (a != null)
+                {
+                    c.result.AddListener(() => a.Invoke());
+                }
+                return c;
+            }
+            public static implicit operator UnityEvent(UnityEventConverter converter) => converter.result;
+        }
     }
 }

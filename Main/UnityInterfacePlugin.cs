@@ -6,21 +6,26 @@ using UnityEngine;
 namespace UnityInterface
 {
     /// <summary>
-    /// If you have toggle done as true! It will still waiting!
+    /// If you have toggle done as true! Or else it still waiting!
     /// </summary>
-    public class WaitForBuiltInResourceLoaded : CustomYieldInstruction
+    public class WaitForBuiltInResource : YieldInstructionSingleton<WaitForBuiltInResource>
     {
         public static bool done;
         public override bool keepWaiting => !done;
     }
-    [BepInPlugin("unity.interface", "Unity Interface", "1.0")]
-    internal class PluginCore : BaseUnityPlugin
+    public class WaitForPremadeResource : YieldInstructionSingleton<WaitForPremadeResource>
     {
-        internal static PluginCore Instance { get; private set; }
+        public static bool done;
+        public override bool keepWaiting => !done;
+    }
+    [BepInPlugin("unity.interface", "Unity Interface", "1.1")]
+    internal class UnityInterfacePlugin : PluginSingleton<UnityInterfacePlugin>
+    {
         internal static bool assetSystemLog, pluginManagerLog;
-        void Awake()
+        protected override void Awake()
         {
-            Instance = this;
+            base.Awake();
+
             GameObject prefabsToManage = new GameObject("Prefabs");
             DontDestroyOnLoad(prefabsToManage);
             prefabsToManage.transform.SetParent(transform);
@@ -34,11 +39,10 @@ namespace UnityInterface
         IEnumerator Start()
         {
             PluginManager.InjectPluginDLLs();
-            yield return new WaitForBuiltInResourceLoaded();
+            yield return new WaitForBuiltInResource();
 
             yield return null;
             PluginManager.LoadAllPlugins();
-
         }
     }
 }

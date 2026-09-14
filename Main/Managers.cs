@@ -13,11 +13,22 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.Networking;
-using static UnityInterface.UnityInterface.Assets.ScriptLoader;
+using static UnityInterface.UnityInterface.Assets.Texture2DLoader;
 using Object = UnityEngine.Object;
 
 namespace UnityInterface
 {
+    public class PluginSingleton<T> : BaseUnityPlugin
+    {
+        public static T Instance { get; private set; }
+        protected virtual void Awake() => Instance = GetComponent<T>();
+    }
+    public class YieldInstructionSingleton<T> : CustomYieldInstruction where T : CustomYieldInstruction, new()
+    {
+        protected static T instance;
+        public static T Instance => instance != null ? instance : (instance = new T());
+        public override bool keepWaiting => false;
+    }
     [AttributeUsage(AttributeTargets.Class)]
     public class SkipScanning : Attribute
     {
@@ -49,7 +60,7 @@ namespace UnityInterface
         internal static List<BaseUnityPlugin> queueToLoad = new List<BaseUnityPlugin>();
         internal static void Log(string log)
         {
-            if (PluginCore.pluginManagerLog)
+            if (UnityInterfacePlugin.pluginManagerLog)
             {
                 Debug.Log(log);
             }
@@ -111,7 +122,7 @@ namespace UnityInterface
                 }
             }
         }
-        static bool IsThisPlugin(BaseUnityPlugin plugin) => PluginCore.Instance == plugin;
+        static bool IsThisPlugin(BaseUnityPlugin plugin) => UnityInterfacePlugin.Instance == plugin;
         private static void LoadSpecificedAssets(BaseUnityPlugin plugin)
         {
             string pathTemp;
@@ -132,6 +143,7 @@ namespace UnityInterface
             queueToLoad.ForEach(a => LoadSpecificedAssets(a));
             queueToLoad.ForEach(a => PrepareEmptyScriptableObjects(a));
             queueToLoad.ForEach(a => LoadScriptableObjects(a));
+            WaitForPremadeResource.done = true;
         }
         #endregion
         #region"ScriptableObject"
@@ -147,7 +159,7 @@ namespace UnityInterface
                     curPath = Path.Combine(startPath, itmType.Name);
                     if (CheckDirectory(curPath, flag))
                     {
-                        if (PluginCore.Instance == plugin)
+                        if (UnityInterfacePlugin.Instance == plugin)
                         {
                             templatePath = Path.Combine(curPath, "References");
                             if (!Directory.Exists(templatePath))
@@ -195,7 +207,7 @@ namespace UnityInterface
                         {
                             try
                             {
-                                JsonUtility.FromJsonOverwrite(ResourcesManager.FromJson(File.ReadAllText(itmPath), itmType), ResourcesManager.Get(itmType, Path.GetFileNameWithoutExtension(itmPath)));
+                                JsonUtility.FromJsonOverwrite(ResourcesManager.PrepareJsonForOverwrite(File.ReadAllText(itmPath), itmType), ResourcesManager.Get(itmType, Path.GetFileNameWithoutExtension(itmPath)));
                             }
                             catch (Exception e)
                             {
@@ -215,13 +227,15 @@ namespace UnityInterface
     public static class ResourcesManager
     {
         public static string ToJson(object obj) => ReplaceInstanceIDs(obj.GetType(), JsonUtility.ToJson(obj, true), true);
-        public static string FromJson(string json, Type type) => ReplaceInstanceIDs(type, json, false);
+        public static string PrepareJsonForOverwrite(string json, Type type) => ReplaceInstanceIDs(type, json, false);
+        public static object FromJson(string json, Type type) => JsonUtility.FromJson(ReplaceInstanceIDs(type, json, false), type);
+        public static T FromJson<T>(string json) => JsonUtility.FromJson<T>(ReplaceInstanceIDs(typeof(T), json, false));
         static Dictionary<Type, Dictionary<string, Object>> loadedAssets = new Dictionary<Type, Dictionary<string, Object>>();
         internal static Dictionary<Type, IAssetLoader<Object>> assetLoaders = new Dictionary<Type, IAssetLoader<Object>>();
         public static Transform prefabParent { get; internal set; }
         internal static void Log(string log)
         {
-            if (PluginCore.assetSystemLog)
+            if (UnityInterfacePlugin.assetSystemLog)
             {
                 Debug.Log(log);
             }
@@ -392,15 +406,15 @@ namespace UnityInterface
             {
                 return null;
             }
-            string metaPath = pathBase.ReplaceExtension(".meta");
+            string metaPath = pathBase + ".meta";
             T metadata0 = null;
             if (File.Exists(metaPath))
             {
-                metadata0 = JsonUtility.FromJson<T>(File.ReadAllText(metaPath));
+                metadata0 = FromJson<T>(File.ReadAllText(metaPath));
             }
             if (metadata0 == null)
             {
-                File.WriteAllText(metaPath, JsonUtility.ToJson(defualt));
+                File.WriteAllText(metaPath, ToJson(defualt));
             }
             metadata0 = JsonUtility.FromJson<T>(File.ReadAllText(metaPath));
             return metadata0;
@@ -475,7 +489,6 @@ namespace UnityInterface
             clip.name = Path.GetFileNameWithoutExtension(path);
             return clip;
         }
-        [Obsolete("I'm sure that nobody will save a mesh asset in JSON format!")]
         public static Mesh GetMeshFromPath(string path)
         {
             Mesh mesh = JsonConvert.DeserializeObject<Mesh>(File.ReadAllText(path));
@@ -562,7 +575,40 @@ namespace UnityInterface
     {
         public class Texture2DLoader : IAssetLoader<Texture2D>
         {
-            public Texture2D Load(string path) => ResourcesManager.GetTexture2DFromPathSimple(path);
+            [Serializable]
+            public class Texture2DMetadata
+            {
+                public bool isReadable;
+                public TextureWrapMode wrapMode = TextureWrapMode.Repeat;
+                public FilterMode filterMode = FilterMode.Point;
+                public int anisoLevel = 1;
+                public Texture2D LoadAndApply(string path)
+                {
+                    Texture2D t = new Texture2D(1, 1);
+                    t.name = Path.GetFileNameWithoutExtension(path);
+
+                    t.wrapMode = wrapMode;
+                    t.filterMode = filterMode;
+                    t.anisoLevel = anisoLevel;
+
+                    if (t.LoadImage(File.ReadAllBytes(path), !isReadable))
+                    {
+                        return t;
+                    }
+                    Debug.LogWarning("Could not Get texture from path");
+                    return null;
+                }
+            }
+            public static Texture2DMetadata metadataEmpty = new Texture2DMetadata();
+            public Texture2D Load(string path)
+            {
+                if (Path.GetExtension(path) == ".meta")
+                {
+                    return null;
+                }
+
+                return path.GetMetadata(metadataEmpty).LoadAndApply(path);
+            }
         }
         public class AudioClipLoader : IAssetLoader<AudioClip>
         {
@@ -570,15 +616,40 @@ namespace UnityInterface
         }
         public class SpriteLoader : IAssetLoader<Sprite>
         {
+            [Serializable]
+            public class SpriteMetadata : Texture2DMetadata
+            {
+                public float rectX = 0, rectY = 0, rectWidth, rectHeight, pivotX = 0.5f, pivotY = 0.5f, pixelsPerUnit = 100;
+            }
+            static SpriteMetadata metadataEmpty = new SpriteMetadata();
             public Sprite Load(string path)
             {
                 if (Path.GetExtension(path) == ".meta")
                 {
                     return null;
                 }
+                string pathMeta = path + ".meta";
+                Texture2D texture; Sprite s; SpriteMetadata metadata;
+                if (!File.Exists(pathMeta))
+                {
+                    texture = ResourcesManager.GetTexture2DFromPathSimple(path);
 
-                Texture2D texture = ResourcesManager.GetTexture2DFromPathSimple(path);
-                Sprite s = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), Vector2.one * 0.5f, 100);
+                    metadata = new SpriteMetadata();
+                    metadata.rectX = 0;
+                    metadata.rectY = 0;
+                    metadata.rectWidth = texture.width;
+                    metadata.rectHeight = texture.height;
+                    metadata.pivotX = 0.5f;
+                    metadata.pivotY = 0.5f;
+                    metadata.pixelsPerUnit = 100;
+                }
+                else
+                {
+                    metadata = path.GetMetadata(metadataEmpty);
+                    texture = metadata.LoadAndApply(path);
+                }
+
+                s = Sprite.Create(texture, new Rect(metadata.rectX, metadata.rectY, metadata.rectWidth, metadata.rectHeight), new Vector2(metadata.pivotX, metadata.pivotY), metadata.pixelsPerUnit);
                 s.name = texture.name;
                 return s;
             }
