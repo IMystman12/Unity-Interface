@@ -1,5 +1,6 @@
 ﻿using System.Collections;
 using BepInEx;
+using BepInEx.Logging;
 using HarmonyLib;
 using UnityEngine;
 
@@ -18,10 +19,10 @@ namespace UnityInterface
         public static bool done;
         public override bool keepWaiting => !done;
     }
-    [BepInPlugin("unity.interface", "Unity Interface", "1.1")]
+    [BepInPlugin("unity.interface", "Unity Interface", "1.3")]
     internal class UnityInterfacePlugin : PluginSingleton<UnityInterfacePlugin>
     {
-        internal static bool assetSystemLog, pluginManagerLog;
+        internal static ManualLogSource assetLogger, pluginLogger;
         protected override void Awake()
         {
             base.Awake();
@@ -33,8 +34,15 @@ namespace UnityInterface
             ResourcesManager.prefabParent = prefabsToManage.transform;
 
             new Harmony("imystman12.unity.interface").PatchAll();
-            assetSystemLog = this.QuickOption("Asset System Logger", false);
-            pluginManagerLog = this.QuickOption("Plugin Manager Logger", false);
+
+            if (this.QuickOption("Asset Logger", false))
+            {
+                assetLogger = BepInEx.Logging.Logger.CreateLogSource($" {Info.Metadata.Name} {Info.Metadata.Version} Asset Manager");
+            }
+            if (this.QuickOption("Plugin Logger", false))
+            {
+                pluginLogger = BepInEx.Logging.Logger.CreateLogSource($" {Info.Metadata.Name} {Info.Metadata.Version} Plugin Manager");
+            }
         }
         IEnumerator Start()
         {

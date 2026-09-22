@@ -7,6 +7,7 @@ using System.Reflection;
 using BepInEx;
 using BepInEx.Bootstrap;
 using BepInEx.Configuration;
+using BepInEx.Logging;
 using HarmonyLib;
 using Microsoft.CSharp;
 using Newtonsoft.Json;
@@ -15,6 +16,7 @@ using UnityEngine;
 using UnityEngine.Networking;
 using static UnityInterface.UnityInterface.Assets.Texture2DLoader;
 using Object = UnityEngine.Object;
+using static UnityInterface.Collections;
 
 namespace UnityInterface
 {
@@ -29,7 +31,6 @@ namespace UnityInterface
         public static T Instance => instance != null ? instance : (instance = new T());
         public override bool keepWaiting => false;
     }
-    [AttributeUsage(AttributeTargets.Class)]
     public class SkipScanning : Attribute
     {
 
@@ -58,27 +59,9 @@ namespace UnityInterface
         public static string GetProjectFolder(BaseUnityPlugin plugin) => Path.Combine(Application.streamingAssetsPath, "Projects", $"Project_{plugin.Info.Metadata.GUID}");
 
         internal static List<BaseUnityPlugin> queueToLoad = new List<BaseUnityPlugin>();
-        internal static void Log(string log)
-        {
-            if (UnityInterfacePlugin.pluginManagerLog)
-            {
-                Debug.Log(log);
-            }
-        }
-        private static bool CheckDirectory(string path, bool generateFolder = false)
-        {
-            if (!Directory.Exists(path))
-            {
-                if (generateFolder)
-                {
-                    Log($"Path:{path} doesn't exists! Creating a new one!");
-                    Directory.CreateDirectory(path);
-                    return true;
-                }
-                return false;
-            }
-            return true;
-        }
+
+        internal static void Log(LogLevel logLevel, string log) => UnityInterfacePlugin.pluginLogger?.Log(logLevel, log);
+
         public static string GetAssetedPathAndGenerate<T>(this BaseUnityPlugin plugin, string name)
         {
             string p = Path.Combine(Application.streamingAssetsPath, "Projects");
@@ -93,32 +76,39 @@ namespace UnityInterface
             ResourcesManager.compilerParameters.ReferencedAssemblies.Clear();
             ResourcesManager.compilerParameters.ReferencedAssemblies.AddRange(array.Select(a => a.Location).ToArray().UniqueCheck());
             AddType(array.SelectMany(a => a.GetTypes()).ToArray().UniqueCheck());
-            Log($"Founded total types count: {types.Count} and ScriptableObject types count: {foundedScriptableObjectTypes.Count}.");
+            Log(LogLevel.Info, $"Founded total types count: {types.Count} and ScriptableObject types count: {foundedScriptableObjectTypes.Count}!");
         }
         public static void AddType<T>() => AddType(typeof(T));
         public static void AddType(params Type[] typez)
         {
             foreach (var a in typez)
             {
-                if (a.ContainsAttribute(typeof(SkipScanning)))
+                try
                 {
-                    continue;
-                }
-                if (!types.AddIfNotExsist(a))
-                {
-                    Log($"{a} was addend!");
-                    continue;
-                }
-                if (!a.IsAbstract)
-                {
-                    if (typeof(ScriptableObject).IsAssignableFrom(a))
+                    if (a.ContainsAttribute<SkipScanning>())
                     {
-                        foundedScriptableObjectTypes.Add(a);
+                        continue;
                     }
-                    if (typeof(IAssetLoader<>).ContainsInterface(a))
+                    if (!types.AddIfNotExsist(a))
                     {
-                        a.GetConstGenericedType(typeof(IAssetLoader<>)).AddLoader((IAssetLoader<Object>)Activator.CreateInstance(a));
+                        Log(LogLevel.Warning, $"[{a}] was addend!");
+                        continue;
                     }
+                    if (!a.IsAbstract)
+                    {
+                        if (typeof(ScriptableObject).IsAssignableFrom(a))
+                        {
+                            foundedScriptableObjectTypes.Add(a);
+                        }
+                        if (typeof(IAssetLoader<>).ContainsInterface(a))
+                        {
+                            a.GetConstGenericedType(typeof(IAssetLoader<>)).AddLoader((IAssetLoader<Object>)Activator.CreateInstance(a));
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log(LogLevel.Error, $"[{a.Namespace}.{a.Name}] loaded failed! Excaption: {ex}");
                 }
             }
         }
@@ -233,13 +223,7 @@ namespace UnityInterface
         static Dictionary<Type, Dictionary<string, Object>> loadedAssets = new Dictionary<Type, Dictionary<string, Object>>();
         internal static Dictionary<Type, IAssetLoader<Object>> assetLoaders = new Dictionary<Type, IAssetLoader<Object>>();
         public static Transform prefabParent { get; internal set; }
-        internal static void Log(string log)
-        {
-            if (UnityInterfacePlugin.assetSystemLog)
-            {
-                Debug.Log(log);
-            }
-        }
+        internal static void Log(LogLevel logLevel, string log) => UnityInterfacePlugin.assetLogger?.Log(logLevel, log);
         public static void LoadFromPath<T>(string path) where T : Object => LoadFromPath(path, typeof(T));
         internal static void LoadFromPath(string path, Type type)
         {
@@ -258,7 +242,7 @@ namespace UnityInterface
             }
             catch (Exception e)
             {
-                Log($"FAILED! Path:{path} Exception:{e}");
+                Log(LogLevel.Error, $"[{type.Name}] {path} loaded Failed! Exception:{e}");
             }
         }
         public static void Add<T>(T asset) where T : Object
@@ -271,11 +255,11 @@ namespace UnityInterface
             if (!loadedAssets[type].ContainsKey(asset.name))
             {
                 loadedAssets[type].Add(asset.name, asset);
-                Log($"{type.Name}_{asset.name}_{asset.GetInstanceID()} was addend!");
+                Log(LogLevel.Warning, $"[{type.Name}] [{asset.GetInstanceID()}] {asset.name} was addend!");
             }
             else
             {
-                Log($"AssetManager only supports unique names for each type! Name:{asset.name}");
+                Log(LogLevel.Warning, $"[{type.Name}] [{asset.GetInstanceID()}] {asset.name} Only supports unique names for each type! But you have copies!");
             }
         }
         internal static void AddLoader(this Type assetType, IAssetLoader<Object> loader)
@@ -288,25 +272,9 @@ namespace UnityInterface
             {
                 assetLoaders[assetType] = loader;
             }
-            Log($"Type:{assetType.Name} of loader:{loader.GetType().Name} was addend into system!");
+            Log(LogLevel.Info, $"[{assetType.Name}] Loader:{loader.GetType().Name} was addend into system!");
         }
-        public static void ReplaceAsset<T>(T asset) where T : Object
-        {
-            Type type = asset.GetType();
-            if (!loadedAssets.ContainsKey(type))
-            {
-                loadedAssets.Add(type, new Dictionary<string, Object>());
-            }
-            if (loadedAssets[type].ContainsKey(asset.name))
-            {
-                loadedAssets[type][asset.name] = asset;
-                Log($"{type.Name}_{asset.name}_{asset.GetInstanceID()} was replaced!");
-            }
-            else
-            {
-                Log($"AssetManager asked you that have you addend it before! Name:{asset.name}");
-            }
-        }
+
         public static void SetAsPrefab(GameObject prefab) => prefab.transform.SetParent(prefabParent);
 
         public static Object[] Get(Type type)
@@ -359,7 +327,7 @@ namespace UnityInterface
                             prop.Value = (propVal == "null") ? 0 : Get(type, propVal).GetInstanceID();
                         }
                     }
-                    fieldType = type.GetField(prop.Name, Collections.bindingFlagsDefualt)?.FieldType;
+                    fieldType = type.GetField(prop.Name, Collections.bindingFlagsDefault)?.FieldType;
                     if (fieldType != null)
                     {
                         if (fieldType.IsEnum)
@@ -545,7 +513,7 @@ namespace UnityInterface
             }
             if (!enumType.IsEnum)
             {
-                Log($"Type: {enumType} isn't an enum!");
+                Log(LogLevel.Error, $"[{enumType.Namespace}.{enumType.Name}] isn't an enum type!");
                 return;
             }
             __result = __result.AddAs(extraEnums[enumType].ToArray());

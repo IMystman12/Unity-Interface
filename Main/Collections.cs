@@ -5,9 +5,10 @@ using System.Linq;
 using System.Reflection;
 using BepInEx;
 using HarmonyLib;
+using Newtonsoft.Json;
 using UnityEngine;
 using UnityEngine.Events;
-using static UnityInterface.ResourcesManager;
+using static UnityInterface.Collections;
 
 namespace UnityInterface
 {
@@ -68,25 +69,38 @@ namespace UnityInterface
                              }
                          });
         }
-        internal static BindingFlags bindingFlagsDefualt => BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
-        public static List<string> GetFieldsWithParents(this Type type)
+
+        internal const BindingFlags bindingFlagsDefault = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
+        public static List<FieldInfo> GetFieldsInfoWithParents(this Type type, BindingFlags flags = bindingFlagsDefault)
         {
-            int i = 0;
             Type t = type;
-            List<string> result = new List<string>();
+            List<FieldInfo> result = new List<FieldInfo>();
             while (t != null && t != typeof(UnityEngine.Object) && t != typeof(object))
             {
-                result.AddRange(t.GetFields(bindingFlagsDefualt).Select(a => a.Name));
+                result.AddRange(t.GetFields(flags));
                 t = t.BaseType;
-                i++;
             }
-            result = result.Distinct().ToList();
             return result;
         }
+        public static List<string> GetFieldsWithParents(this Type type, BindingFlags flags = bindingFlagsDefault) => type.GetFieldsInfoWithParents(flags).Select(a => a.Name).ToList();
+
+
+        public static List<PropertyInfo> GetPropertiesInfoWithParents(this Type type, BindingFlags flags = bindingFlagsDefault)
+        {
+            Type t = type;
+            List<PropertyInfo> result = new List<PropertyInfo>();
+            while (t != null && t != typeof(UnityEngine.Object) && t != typeof(object))
+            {
+                result.AddRange(t.GetProperties(flags));
+                t = t.BaseType;
+            }
+            return result;
+        }
+        public static List<string> GetPropertiesWithParents(this Type type, BindingFlags flags = bindingFlagsDefault) => type.GetPropertiesInfoWithParents(flags).Select(a => a.Name).ToList();
+
         public static string[] GetAllFiles(string path, string extensionWithDot = "") => Directory.GetFiles(path, $"*{extensionWithDot}", SearchOption.AllDirectories);
         [Obsolete("Use List<T>.Foreach() instead!", true)] public static void Foreach() => throw new Exception("It's unless!");
-        public static T[] FindWithInactiveAll<T>(this UnityEngine.Object obj, string name) where T : UnityEngine.Object => GameObject.FindObjectsOfType<T>(true).Where(a => a.name == name).ToArray();
-        public static T FindWithInactive<T>(this UnityEngine.Object obj, string name) where T : UnityEngine.Object => GameObject.FindObjectsOfType<T>(true).Where(a => a.name == name).First();
+
         public static T[] NullCheck<T>(this T[] array)
         {
             List<T> result = new List<T>();
@@ -100,9 +114,16 @@ namespace UnityInterface
             return result.ToArray();
         }
         public static T[] UniqueCheck<T>(this T[] array) => NullCheck(array).Distinct().ToArray();
+
         public static bool ContainsInterface(this Type interfaceType, Type typeBase) => typeBase.GetInterfaces().Any(a => a.IsGenericType && a.GetGenericTypeDefinition() == interfaceType);
         public static Type GetConstGenericedType(this Type typeBase, Type interfaceType) => typeBase.GetInterfaces().Where(a => a.IsGenericType && a.GetGenericTypeDefinition() == interfaceType).FirstOrDefault()?.GetGenericArguments()?.FirstOrDefault();
-        public static bool ContainsAttribute(this Type typeBase, Type attributeType) => typeBase.CustomAttributes.Any(a => attributeType.IsAssignableFrom(a.GetType()));
+
+        public static bool ContainsAttribute<T>(this Type typeBase) where T : Attribute => typeBase.IsDefined(typeof(T), true);
+
+        public static T GetAttribute<T>(this Type typeBase) where T : Attribute => typeBase.GetCustomAttribute<T>(true);
+
+        public static object[] GetAttributes<T>(this Type typeBase) where T : Attribute => typeBase.GetCustomAttributes(typeof(T), true);
+
         public static T ToGameObject<T>(this BaseUnityPlugin plugin, bool toPrefab = false, bool applyValues = false) => plugin.ToGameObject(toPrefab, applyValues, typeof(T)).GetComponent<T>();
         public static GameObject ToGameObject(this BaseUnityPlugin plugin, bool toPrefab, bool applyValues, params Type[] types)
         {
@@ -122,7 +143,10 @@ namespace UnityInterface
 
                 if (applyValues)
                 {
-                    types.ToList().ForEach(a => result.GetComponent(a).ApplyValuesComponent(plugin));
+                    foreach (var a in types)
+                    {
+                        result.GetComponent(a).ApplyValuesComponent(plugin);
+                    }
                 }
                 return result;
             }
@@ -136,7 +160,7 @@ namespace UnityInterface
         /// <returns>Replaced script(C)</returns>
         public static C Rescript<O, C>(O source) where O : MonoBehaviour where C : MonoBehaviour
         {
-            O pref = GameObject.Instantiate(source, prefabParent);
+            O pref = GameObject.Instantiate(source, ResourcesManager.prefabParent);
 
             GameObject a = pref.gameObject;
             a.name = typeof(C).Name;
@@ -156,7 +180,7 @@ namespace UnityInterface
         /// <typeparam name="O">Script(O) type</typeparam>
         /// <typeparam name="C">Script(C) type</typeparam>
         /// <returns>Replaced script(C)</returns>
-        public static C Rescript<O, C>() where O : MonoBehaviour where C : MonoBehaviour => Rescript<O, C>(Get<O>().First());
+        public static C Rescript<O, C>() where O : MonoBehaviour where C : MonoBehaviour => Rescript<O, C>(ResourcesManager.Get<O>().First());
         public static T Random<T>(this IEnumerable<T> selections) => Random(selections.ToArray());
         public static T Random<T>(params T[] selections) => selections[UnityEngine.Random.Range(0, selections.Length)];
         public static T Random<T>(this IEnumerable<T> selections, System.Random rng) => Random(rng, selections.ToArray());
@@ -167,9 +191,9 @@ namespace UnityInterface
             string path = Path.Combine(PluginManager.GetProjectFolder(plugin), $"{name}.json");
             if (!File.Exists(path))
             {
-                File.WriteAllText(path, ToJson(component));
+                File.WriteAllText(path, ResourcesManager.ToJson(component));
             }
-            JsonUtility.FromJsonOverwrite(PrepareJsonForOverwrite(File.ReadAllText(path), component.GetType()), component);
+            JsonUtility.FromJsonOverwrite(ResourcesManager.PrepareJsonForOverwrite(File.ReadAllText(path), component.GetType()), component);
         }
         public static void ApplyValues<T>(this T component, BaseUnityPlugin plugin) where T : Component => component.ApplyValuesComponent(plugin);
         /// <summary>
@@ -210,6 +234,7 @@ namespace UnityInterface
             return (T)(object)val;
         }
         public static string[] SafeSplit(this string s, params char[] seperator) => s.Split(seperator);
+
         public class UnityEventConverter
         {
             public readonly UnityEvent result = new UnityEvent();
@@ -223,6 +248,247 @@ namespace UnityInterface
                 return c;
             }
             public static implicit operator UnityEvent(UnityEventConverter converter) => converter.result;
+        }
+
+        public static bool CheckDirectory(string path, bool generateFolder = false)
+        {
+            if (!Directory.Exists(path))
+            {
+                if (generateFolder)
+                {
+                    Debug.LogWarning($"[{path}] its folder doesn't exists! Creating a new one!");
+                    Directory.CreateDirectory(path);
+                    return true;
+                }
+                return false;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// It only works with ApplyProperties method.<br>If there aren't any GetFrom suits your request.<br>You can make an new on with the classs!
+        /// </summary>
+        public abstract class GetFromBase : Attribute
+        {
+            private Type typeOverride;
+            public GetFromBase()
+            {
+
+            }
+            public GetFromBase(Type componentType)
+            {
+                typeOverride = componentType;
+            }
+            public void Run(Component component, FieldInfo field)
+            {
+                if (typeOverride != null && !field.FieldType.IsAssignableFrom(typeOverride))
+                {
+                    Debug.LogWarning($"[{component.GetType().Name}] {component.name}.{field.Name} {field.FieldType} doesn't match {typeOverride.Name}!");
+                    return;
+                }
+                if (GetValue(component, typeOverride ?? field.FieldType, out var value))
+                {
+                    field.SetValue(field.IsStatic ? null : component, value);
+                }
+                else
+                {
+                    Debug.LogWarning($"[{component.GetType().Name}] {component.name}.{field.Name} try get value failed!");
+                }
+            }
+
+            public void Run(Component component, PropertyInfo property)
+            {
+                if (typeOverride != null && !property.PropertyType.IsAssignableFrom(typeOverride))
+                {
+                    Debug.LogWarning($"[{component.GetType().Name}] {component.name}.{property.Name} {property.PropertyType} doesn't match {typeOverride.Name}!");
+                    return;
+                }
+                var _methodInfo = property.GetSetMethod(true);
+                if (_methodInfo != null)
+                {
+                    if (GetValue(component, typeOverride ?? property.PropertyType, out var value))
+                    {
+                        _methodInfo.Invoke(_methodInfo.IsStatic ? null : component, new object[] { value });
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"[{component.GetType().Name}] {component.name}.{property.Name} try get value failed!");
+                    }
+                }
+                else
+                {
+                    Debug.LogWarning($"[{component.GetType().Name}] {component.name}.{property.Name} doesn't have setter!");
+                }
+            }
+
+            protected abstract bool GetValue(Component component, Type type, out object result);
+        }
+
+        public class GetFromResources : GetFromBase
+        {
+            string name = null;
+            public GetFromResources(string name) => this.name = name;
+            public GetFromResources(Type type, string name) : base(type) => this.name = name;
+            protected override bool GetValue(Component component, Type type, out object result)
+            {
+                if (!string.IsNullOrWhiteSpace(name))
+                {
+                    result = ResourcesManager.Get(type, name);
+                    return result != null;
+                }
+                result = ResourcesManager.Get(type).FirstOrDefault();
+                return result != null;
+            }
+        }
+
+        public class GetFrom : GetFromBase
+        {
+            //I don't use index because it's rare to see multiple, same component on a game object!
+            public GetFrom()
+            {
+
+            }
+            public GetFrom(Type componentType) : base(componentType)
+            {
+
+            }
+
+            protected override bool GetValue(Component component, Type type, out object result)
+            {
+                if (typeof(GameObject).IsAssignableFrom(type))
+                {
+                    result = component.gameObject;
+                    return true;
+                }
+
+                var _component = component.GetComponent(type);
+                if (_component == null)
+                {
+                    result = null;
+                    return false;
+                }
+
+                result = _component;
+                return true;
+            }
+        }
+
+        public class GetFromChild : GetFromBase
+        {
+            public string gameObjectName = null;
+            public GetFromChild()
+            {
+
+            }
+
+            public GetFromChild(string gameObjectName) => this.gameObjectName = gameObjectName;
+            public GetFromChild(string gameObjectName, Type componentType) : base(componentType) => this.gameObjectName = gameObjectName;
+
+            protected override bool GetValue(Component component, Type type, out object result)
+            {
+                Transform _transform = string.IsNullOrWhiteSpace(gameObjectName) ? null : component.transform.Find(gameObjectName);
+
+                if (typeof(GameObject).IsAssignableFrom(type))
+                {
+                    if (_transform)
+                    {
+                        result = _transform.gameObject;
+                        return true;
+                    }
+                    result = null;
+                    return false;
+                }
+
+                Component _component = null;
+                if (string.IsNullOrWhiteSpace(gameObjectName))
+                {
+                    _component = component.GetComponentInChildren(type);
+                }
+
+                if (_transform)
+                {
+                    _component = _transform.GetComponent(type);
+                }
+
+                if (_component == null)
+                {
+                    result = null;
+                    return false;
+                }
+
+                result = _component;
+                return true;
+            }
+        }
+
+        public class GetFromScene : GetFromBase
+        {
+            public string gameObjectName = null;
+            public GetFromScene()
+            {
+
+            }
+
+            public GetFromScene(string gameObjectName) => this.gameObjectName = gameObjectName;
+            public GetFromScene(string gameObjectName, Type componentType) : base(componentType) => this.gameObjectName = gameObjectName;
+
+            protected override bool GetValue(Component component, Type type, out object result)
+            {
+                if (typeof(GameObject).IsAssignableFrom(type))
+                {
+                    if (!string.IsNullOrWhiteSpace(gameObjectName))
+                    {
+                        result = UnityEngine.Object.FindObjectsOfType<GameObject>(true).FirstOrDefault(a => a.name == gameObjectName);
+                        return result != null;
+                    }
+                    result = null;
+                    return false;
+                }
+
+                if (!string.IsNullOrWhiteSpace(gameObjectName))
+                {
+                    result = UnityEngine.Object.FindObjectsOfType(type, true).FirstOrDefault(a => a.name == gameObjectName);
+                    return result != null;
+                }
+                result = UnityEngine.Object.FindObjectsOfType(type, true).FirstOrDefault();
+                return result != null;
+            }
+        }
+
+        internal const BindingFlags bindingFlagsGetFrom = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.DeclaredOnly;
+        public static void ApplyProperties(this Component component)
+        {
+            var arrayField = component.GetType().GetFieldsInfoWithParents(bindingFlagsGetFrom);
+            foreach (var a in arrayField)
+            {
+                foreach (var b in a.GetCustomAttributes<GetFromBase>())
+                {
+                    try
+                    {
+                        b?.Run(component, a);
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.LogWarning($"[{component.GetType().Name}] {component.name}.{a.Name} {a.FieldType} {b.GetType().Name} get failed! " + ex);
+                    }
+                }
+            }
+
+            var arrayProperties = component.GetType().GetPropertiesInfoWithParents(bindingFlagsGetFrom).Where(a => a.GetSetMethod(true) != null);
+            foreach (var a in arrayProperties)
+            {
+                foreach (var b in a.GetCustomAttributes<GetFromBase>())
+                {
+                    try
+                    {
+                        b?.Run(component, a);
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.LogWarning($"[{component.GetType().Name}] {component.name}.{a.Name} {a.PropertyType} {b.GetType().Name} get failed! " + ex);
+                    }
+                }
+            }
         }
     }
 }
