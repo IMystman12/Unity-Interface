@@ -5,10 +5,8 @@ using System.Linq;
 using System.Reflection;
 using BepInEx;
 using HarmonyLib;
-using Newtonsoft.Json;
 using UnityEngine;
 using UnityEngine.Events;
-using static UnityInterface.Collections;
 
 namespace UnityInterface
 {
@@ -18,29 +16,37 @@ namespace UnityInterface
     [HarmonyPatch]
     public static class Collections
     {
-        private static Dictionary<object, Traverse> storage = new Dictionary<object, Traverse>();
-        public static object GetValue(this object obj, string name) => GetValue<object>(obj, name);
-        private static void CheckExists(object obj)
+        internal const BindingFlags bindingFlagsForMerge = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        internal const BindingFlags bindingFlagsDefault = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
+        internal const BindingFlags bindingFlagsForParents = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.DeclaredOnly;
+        internal static Dictionary<(Type, BindingFlags), List<FieldInfo>> fieldsCache = new Dictionary<(Type, BindingFlags), List<FieldInfo>>();
+        internal static Dictionary<(Type, BindingFlags), List<PropertyInfo>> propertiesCache = new Dictionary<(Type, BindingFlags), List<PropertyInfo>>();
+        public static bool ContainsField(this object obj, string name, BindingFlags flags = bindingFlagsDefault) => obj.GetType().GetFieldsWithParents(flags).Contains(name);
+        public static object GetValue(this object obj, string name, BindingFlags flags = bindingFlagsDefault)
         {
-            if (!storage.ContainsKey(obj))
+            var t = obj.GetType();
+            var f = t.GetFieldsInfoWithParents(flags).FirstOrDefault(a => a.Name == name);
+            if (f != null)
             {
-                storage.Add(obj, Traverse.Create(obj));
+                return f.GetValue(obj);
             }
+            var p = t.GetPropertiesInfoWithParents(flags).FirstOrDefault(a => a.Name == name);
+            var g = p?.GetGetMethod(true) ?? throw new MissingMemberException(t.FullName, name);
+            return g.Invoke(obj, Array.Empty<object>());
         }
-        public static bool ContainsField(this object obj, string name)
+        public static T GetValue<T>(this object obj, string name, BindingFlags flags = bindingFlagsDefault) => (T)GetValue(obj, name, flags);
+        public static void SetValue<T>(this object obj, string name, T value, BindingFlags flags = bindingFlagsDefault)
         {
-            CheckExists(obj);
-            return storage[obj].Field(name).FieldExists();
-        }
-        public static T GetValue<T>(this object obj, string name)
-        {
-            CheckExists(obj);
-            return storage[obj].Field(name).GetValue<T>();
-        }
-        public static Traverse SetValue<T>(this object obj, string name, T value)
-        {
-            CheckExists(obj);
-            return storage[obj].Field(name).SetValue(value);
+            var t = obj.GetType();
+            var f = t.GetFieldsInfoWithParents(flags).FirstOrDefault(a => a.Name == name);
+            if (f != null)
+            {
+                f.SetValue(obj, value);
+                return;
+            }
+            var p = t.GetPropertiesInfoWithParents(flags).FirstOrDefault(a => a.Name == name);
+            var s = p?.GetSetMethod(true) ?? throw new MissingMemberException(t.FullName, name);
+            s.Invoke(obj, new object[] { value });
         }
         public static T[] AddAs<T>(this T[] obj, params T[] value)
         {
@@ -48,7 +54,7 @@ namespace UnityInterface
             list.AddRange(value);
             return list.ToArray();
         }
-        public static List<(Component, List<string>)> GetReferencesFromGameObject(this Component referenced) => referenced.GetComponentsInChildren<Component>().Where(a => a != referenced).Select(a => (a, a.GetType().GetFieldsWithParents().Where(b => a.GetValue(b) == referenced).ToList())).ToList();
+        public static List<(Component, List<string>)> GetReferencesFromGameObject(this Component referenced, BindingFlags flags = bindingFlagsForMerge) => referenced.GetComponentsInChildren<Component>().Where(a => a != null && a != referenced).Select(a => (a, a.GetType().GetFieldsWithParents(flags).Where(b => Equals(a.GetValue(b), referenced)).ToList())).ToList();
         public static void SetReferencesFromGameObject(this Component injection, List<(Component, List<string>)> data) => data.ForEach(a => a.Item2.ForEach(b => a.Item1?.SetValue(b, injection)));
         /// <summary>
         /// Merge all vars from parent to target.
@@ -57,51 +63,49 @@ namespace UnityInterface
         /// <typeparam name="T"></typeparam>
         /// <param name="parent">Merge Sample</param>
         /// <param name="target">Merged</param>
-        public static void Merge(this object parent, object target)
-        {
-            CheckExists(parent);
-            CheckExists(target);
-            parent.GetType().GetFieldsWithParents().ForEach(a =>
+        public static void Merge(this object parent, object target, BindingFlags flags = bindingFlagsForMerge) => parent.GetType().GetFieldsWithParents(flags).ForEach(a =>
                          {
-                             if (storage[target].Field(a).FieldExists())
+                             if (target.ContainsField(a, flags))
                              {
-                                 target.SetValue(a, parent.GetValue(a));
+                                 target.SetValue(a, parent.GetValue(a), flags);
                              }
                          });
-        }
 
-        internal const BindingFlags bindingFlagsDefault = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
-        public static List<FieldInfo> GetFieldsInfoWithParents(this Type type, BindingFlags flags = bindingFlagsDefault)
+        public static List<FieldInfo> GetFieldsInfoWithParents(this Type type, BindingFlags flags = bindingFlagsForParents)
         {
-            Type t = type;
             List<FieldInfo> result = new List<FieldInfo>();
-            while (t != null && t != typeof(UnityEngine.Object) && t != typeof(object))
+            (Type, BindingFlags) key = (type, flags);
+            if (!fieldsCache.ContainsKey(key))
             {
-                result.AddRange(t.GetFields(flags));
-                t = t.BaseType;
+                while (type != null && type != typeof(UnityEngine.Object) && type != typeof(object))
+                {
+                    result.AddRange(type.GetFields(flags));
+                    type = type.BaseType;
+                }
+                fieldsCache.Add(key, result.Distinct().ToList());
             }
-            return result;
+            return fieldsCache[key];
         }
-        public static List<string> GetFieldsWithParents(this Type type, BindingFlags flags = bindingFlagsDefault) => type.GetFieldsInfoWithParents(flags).Select(a => a.Name).ToList();
+        public static List<string> GetFieldsWithParents(this Type type, BindingFlags flags = bindingFlagsForParents) => type.GetFieldsInfoWithParents(flags).Select(a => a.Name).ToList();
 
-
-        public static List<PropertyInfo> GetPropertiesInfoWithParents(this Type type, BindingFlags flags = bindingFlagsDefault)
+        public static List<PropertyInfo> GetPropertiesInfoWithParents(this Type type, BindingFlags flags = bindingFlagsForParents)
         {
-            Type t = type;
             List<PropertyInfo> result = new List<PropertyInfo>();
-            while (t != null && t != typeof(UnityEngine.Object) && t != typeof(object))
+            (Type, BindingFlags) key = (type, flags);
+            if (!propertiesCache.ContainsKey(key))
             {
-                result.AddRange(t.GetProperties(flags));
-                t = t.BaseType;
+                while (type != null && type != typeof(UnityEngine.Object) && type != typeof(object))
+                {
+                    result.AddRange(type.GetProperties(flags));
+                    type = type.BaseType;
+                }
+                propertiesCache.Add(key, result.Distinct().ToList());
             }
-            return result;
+            return propertiesCache[key];
         }
-        public static List<string> GetPropertiesWithParents(this Type type, BindingFlags flags = bindingFlagsDefault) => type.GetPropertiesInfoWithParents(flags).Select(a => a.Name).ToList();
+        public static List<string> GetPropertiesWithParents(this Type type, BindingFlags flags = bindingFlagsForParents) => type.GetPropertiesInfoWithParents(flags).Select(a => a.Name).ToList();
 
-        public static string[] GetAllFiles(string path, string extensionWithDot = "") => Directory.GetFiles(path, $"*{extensionWithDot}", SearchOption.AllDirectories);
-        [Obsolete("Use List<T>.Foreach() instead!", true)] public static void Foreach() => throw new Exception("It's unless!");
-
-        public static T[] NullCheck<T>(this T[] array)
+        public static T[] NullRemoval<T>(this T[] array) where T : class
         {
             List<T> result = new List<T>();
             foreach (var item in array)
@@ -113,15 +117,13 @@ namespace UnityInterface
             }
             return result.ToArray();
         }
-        public static T[] UniqueCheck<T>(this T[] array) => NullCheck(array).Distinct().ToArray();
+        public static T[] UniqueCheck<T>(this T[] array) where T : class => NullRemoval(array).Distinct().ToArray();
 
         public static bool ContainsInterface(this Type interfaceType, Type typeBase) => typeBase.GetInterfaces().Any(a => a.IsGenericType && a.GetGenericTypeDefinition() == interfaceType);
         public static Type GetConstGenericedType(this Type typeBase, Type interfaceType) => typeBase.GetInterfaces().Where(a => a.IsGenericType && a.GetGenericTypeDefinition() == interfaceType).FirstOrDefault()?.GetGenericArguments()?.FirstOrDefault();
 
         public static bool ContainsAttribute<T>(this Type typeBase) where T : Attribute => typeBase.IsDefined(typeof(T), true);
-
         public static T GetAttribute<T>(this Type typeBase) where T : Attribute => typeBase.GetCustomAttribute<T>(true);
-
         public static object[] GetAttributes<T>(this Type typeBase) where T : Attribute => typeBase.GetCustomAttributes(typeof(T), true);
 
         public static T ToGameObject<T>(this BaseUnityPlugin plugin, bool toPrefab = false, bool applyValues = false) => plugin.ToGameObject(toPrefab, applyValues, typeof(T)).GetComponent<T>();
@@ -283,7 +285,7 @@ namespace UnityInterface
             {
                 if (typeOverride != null && !field.FieldType.IsAssignableFrom(typeOverride))
                 {
-                    Debug.LogWarning($"[{component.GetType().Name}] {component.name}.{field.Name} {field.FieldType} doesn't match {typeOverride.Name}!");
+                    Debug.LogWarning($"[{component.GetType().FullName}] {component.name}.{field.Name} {field.FieldType} doesn't match {typeOverride.Name}!");
                     return;
                 }
                 if (GetValue(component, typeOverride ?? field.FieldType, out var value))
@@ -292,7 +294,7 @@ namespace UnityInterface
                 }
                 else
                 {
-                    Debug.LogWarning($"[{component.GetType().Name}] {component.name}.{field.Name} try get value failed!");
+                    Debug.LogWarning($"[{component.GetType().FullName}] {component.name}.{field.Name} try get value failed!");
                 }
             }
 
@@ -300,7 +302,7 @@ namespace UnityInterface
             {
                 if (typeOverride != null && !property.PropertyType.IsAssignableFrom(typeOverride))
                 {
-                    Debug.LogWarning($"[{component.GetType().Name}] {component.name}.{property.Name} {property.PropertyType} doesn't match {typeOverride.Name}!");
+                    Debug.LogWarning($"[{component.GetType().FullName}] {component.name}.{property.Name} {property.PropertyType} doesn't match {typeOverride.Name}!");
                     return;
                 }
                 var _methodInfo = property.GetSetMethod(true);
@@ -312,12 +314,12 @@ namespace UnityInterface
                     }
                     else
                     {
-                        Debug.LogWarning($"[{component.GetType().Name}] {component.name}.{property.Name} try get value failed!");
+                        Debug.LogWarning($"[{component.GetType().FullName}] {component.name}.{property.Name} try get value failed!");
                     }
                 }
                 else
                 {
-                    Debug.LogWarning($"[{component.GetType().Name}] {component.name}.{property.Name} doesn't have setter!");
+                    Debug.LogWarning($"[{component.GetType().FullName}] {component.name}.{property.Name} doesn't have setter!");
                 }
             }
 
@@ -455,10 +457,9 @@ namespace UnityInterface
             }
         }
 
-        internal const BindingFlags bindingFlagsGetFrom = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.DeclaredOnly;
-        public static void ApplyProperties(this Component component)
+        public static void ApplyProperties(this Component component, BindingFlags flags = bindingFlagsForMerge)
         {
-            var arrayField = component.GetType().GetFieldsInfoWithParents(bindingFlagsGetFrom);
+            var arrayField = component.GetType().GetFieldsInfoWithParents(flags);
             foreach (var a in arrayField)
             {
                 foreach (var b in a.GetCustomAttributes<GetFromBase>())
@@ -469,12 +470,12 @@ namespace UnityInterface
                     }
                     catch (Exception ex)
                     {
-                        Debug.LogWarning($"[{component.GetType().Name}] {component.name}.{a.Name} {a.FieldType} {b.GetType().Name} get failed! " + ex);
+                        Debug.LogWarning($"[{component.GetType().FullName}] {component.name}.{a.Name} {a.FieldType} {b.GetType().Name} get failed! " + ex);
                     }
                 }
             }
 
-            var arrayProperties = component.GetType().GetPropertiesInfoWithParents(bindingFlagsGetFrom).Where(a => a.GetSetMethod(true) != null);
+            var arrayProperties = component.GetType().GetPropertiesInfoWithParents(bindingFlagsForMerge).Where(a => a.GetSetMethod(true) != null);
             foreach (var a in arrayProperties)
             {
                 foreach (var b in a.GetCustomAttributes<GetFromBase>())
@@ -485,7 +486,7 @@ namespace UnityInterface
                     }
                     catch (Exception ex)
                     {
-                        Debug.LogWarning($"[{component.GetType().Name}] {component.name}.{a.Name} {a.PropertyType} {b.GetType().Name} get failed! " + ex);
+                        Debug.LogWarning($"[{component.GetType().FullName}] {component.name}.{a.Name} {a.PropertyType} {b.GetType().Name} get failed! " + ex);
                     }
                 }
             }

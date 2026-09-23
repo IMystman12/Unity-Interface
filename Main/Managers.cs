@@ -108,26 +108,28 @@ namespace UnityInterface
                 }
                 catch (Exception ex)
                 {
-                    Log(LogLevel.Error, $"[{a.Namespace}.{a.Name}] loaded failed! Excaption: {ex}");
+                    Log(LogLevel.Error, $"[{a.FullName}] loaded failed! Excaption: {ex}");
                 }
             }
         }
+
         static bool IsThisPlugin(BaseUnityPlugin plugin) => UnityInterfacePlugin.Instance == plugin;
         private static void LoadSpecificedAssets(BaseUnityPlugin plugin)
         {
             string pathTemp;
             bool flag = IsThisPlugin(plugin);
-            foreach (var itm in ResourcesManager.assetLoaders.Keys)
+            foreach (var a in ResourcesManager.assetLoaders.Keys)
             {
-                pathTemp = Path.Combine(GetProjectFolder(plugin), itm.Name);
+                pathTemp = Path.Combine(GetProjectFolder(plugin), a.Name);
                 if (CheckDirectory(pathTemp, flag))
                 {
-                    Collections.GetAllFiles(pathTemp).ToList().ForEach(c => ResourcesManager.LoadFromPath(c, itm));
+                    Directory.GetFiles(pathTemp, "*", SearchOption.AllDirectories).ToList().ForEach(c => ResourcesManager.LoadFromPath(c, a));
                 }
             }
         }
         internal static void LoadAllPlugins()
         {
+            Log(LogLevel.Info, "Load ALL Plugin Assets!");
             queueToLoad = Chainloader.PluginInfos.Values.Select(a => a.Instance).ToList();
             CheckDirectory(Path.Combine(Application.streamingAssetsPath, "Projects"), true);
             queueToLoad.ForEach(a => LoadSpecificedAssets(a));
@@ -164,7 +166,7 @@ namespace UnityInterface
                             }
                         }
 
-                        foreach (var itmPath in Collections.GetAllFiles(curPath, ".json").Where(a => "Template" != Path.GetFileNameWithoutExtension(a) && !a.Contains(Path.Combine(curPath, "References"))))
+                        foreach (var itmPath in Directory.GetFiles(curPath, "*.json", SearchOption.AllDirectories).Where(a => "Template" != Path.GetFileNameWithoutExtension(a) && !a.Contains(Path.Combine(curPath, "References"))))
                         {
                             try
                             {
@@ -193,7 +195,7 @@ namespace UnityInterface
                     curPath = Path.Combine(startPath, itmType.Name);
                     if (CheckDirectory(curPath, flag))
                     {
-                        foreach (var itmPath in Collections.GetAllFiles(curPath, ".json").Where(a => "Template" != Path.GetFileNameWithoutExtension(a) && !a.Contains(Path.Combine(curPath, "References"))))
+                        foreach (var itmPath in Directory.GetFiles(curPath, "*.json", SearchOption.AllDirectories).Where(a => "Template" != Path.GetFileNameWithoutExtension(a) && !a.Contains(Path.Combine(curPath, "References"))))
                         {
                             try
                             {
@@ -229,7 +231,7 @@ namespace UnityInterface
         {
             if (!assetLoaders.ContainsKey(type) || assetLoaders[type] == null)
             {
-                Debug.LogWarning($"Type: {type.Name} of loader wasn't found! Please add it on AssetManager.AddLoader method during YOUR Awake Method!");
+                Debug.LogWarning($"Loader [{type.Name}] wasn't found! Please add it on AssetManager.AddLoader method during YOUR Awake Method!");
                 return;
             }
             try
@@ -255,7 +257,7 @@ namespace UnityInterface
             if (!loadedAssets[type].ContainsKey(asset.name))
             {
                 loadedAssets[type].Add(asset.name, asset);
-                Log(LogLevel.Warning, $"[{type.Name}] [{asset.GetInstanceID()}] {asset.name} was addend!");
+                Log(LogLevel.Info, $"[{type.Name}] [{asset.GetInstanceID()}] {asset.name} was addend!");
             }
             else
             {
@@ -513,7 +515,7 @@ namespace UnityInterface
             }
             if (!enumType.IsEnum)
             {
-                Log(LogLevel.Error, $"[{enumType.Namespace}.{enumType.Name}] isn't an enum type!");
+                Log(LogLevel.Error, $"[{enumType.FullName}] isn't an enum type!");
                 return;
             }
             __result = __result.AddAs(extraEnums[enumType].ToArray());

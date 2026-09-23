@@ -47,8 +47,7 @@ namespace UnityInterface
         IEnumerator Start()
         {
             PluginManager.InjectPluginDLLs();
-            yield return new WaitForBuiltInResource();
-
+            yield return WaitForBuiltInResource.Instance;
             yield return null;
             PluginManager.LoadAllPlugins();
         }
