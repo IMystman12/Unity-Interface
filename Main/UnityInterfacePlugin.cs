@@ -6,23 +6,12 @@ using UnityEngine;
 
 namespace UnityInterface
 {
-    /// <summary>
-    /// If you have toggle done as true! Or else it still waiting!
-    /// </summary>
-    public class WaitForBuiltInResource : YieldInstructionSingleton<WaitForBuiltInResource>
-    {
-        public static bool done;
-        public override bool keepWaiting => !done;
-    }
-    public class WaitForPremadeResource : YieldInstructionSingleton<WaitForPremadeResource>
-    {
-        public static bool done;
-        public override bool keepWaiting => !done;
-    }
     [BepInPlugin("unity.interface", "Unity Interface", "1.3")]
     internal class UnityInterfacePlugin : PluginSingleton<UnityInterfacePlugin>
     {
+
         internal static ManualLogSource assetLogger, pluginLogger;
+
         protected override void Awake()
         {
             base.Awake();
@@ -44,6 +33,7 @@ namespace UnityInterface
                 pluginLogger = BepInEx.Logging.Logger.CreateLogSource($" {Info.Metadata.Name} {Info.Metadata.Version} Plugin Manager");
             }
         }
+
         IEnumerator Start()
         {
             PluginManager.InjectPluginDLLs();
