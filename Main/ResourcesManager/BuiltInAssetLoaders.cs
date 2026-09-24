@@ -1,9 +1,7 @@
-
 using System;
 using System.IO;
 using System.Reflection;
 using UnityEngine;
-using Object = UnityEngine.Object;
 
 namespace UnityInterface.AssetLoaders
 {
@@ -36,12 +34,6 @@ namespace UnityInterface.AssetLoaders
     public class SpriteMetadata : Texture2DMetadata
     {
         public float rectX = 0, rectY = 0, rectWidth, rectHeight, pivotX = 0.5f, pivotY = 0.5f, pixelsPerUnit = 100;
-    }
-
-    [Serializable]
-    public class AssemblyObject : Object
-    {
-        public Assembly assembly;
     }
 
     public class Texture2DLoader : IAssetLoader<Texture2D>
@@ -101,8 +93,4 @@ namespace UnityInterface.AssetLoaders
         public AssetBundle Load(string path) => ResourcesManager.GetAssetBundleFromPath(path);
     }
 
-    public class ScriptLoader : IAssetLoader<AssemblyObject>
-    {
-        public AssemblyObject Load(string path) => new AssemblyObject() { assembly = ResourcesManager.LoadCodes(path) };
-    }
 }

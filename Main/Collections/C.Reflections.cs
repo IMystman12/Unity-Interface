@@ -13,7 +13,7 @@ namespace UnityInterface
         internal static Dictionary<(Type, BindingFlags), List<FieldInfo>> fieldsCache = new Dictionary<(Type, BindingFlags), List<FieldInfo>>();
         internal static Dictionary<(Type, BindingFlags), List<PropertyInfo>> propertiesCache = new Dictionary<(Type, BindingFlags), List<PropertyInfo>>();
 
-        public static List<FieldInfo> GetFieldsInfoWithParents(this Type type, BindingFlags flags = bindingFlagsForParents)
+        public static List<FieldInfo> GetFieldInfosWithParents(this Type type, BindingFlags flags = bindingFlagsForParents)
         {
             List<FieldInfo> result = new List<FieldInfo>();
             (Type, BindingFlags) key = (type, flags);
@@ -28,7 +28,7 @@ namespace UnityInterface
             }
             return fieldsCache[key];
         }
-        public static List<string> GetFieldsWithParents(this Type type, BindingFlags flags = bindingFlagsForParents) => type.GetFieldsInfoWithParents(flags).Select(a => a.Name).ToList();
+        public static List<string> GetFieldsWithParents(this Type type, BindingFlags flags = bindingFlagsForParents) => type.GetFieldInfosWithParents(flags).Select(a => a.Name).ToList();
 
         public static List<PropertyInfo> GetPropertiesInfoWithParents(this Type type, BindingFlags flags = bindingFlagsForParents)
         {

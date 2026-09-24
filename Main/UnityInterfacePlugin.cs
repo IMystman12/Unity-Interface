@@ -9,6 +9,7 @@ namespace UnityInterface
     [BepInPlugin("unity.interface", "Unity Interface", "1.3")]
     internal class UnityInterfacePlugin : PluginSingleton<UnityInterfacePlugin>
     {
+        internal static Harmony harmony;
 
         internal static ManualLogSource assetLogger, pluginLogger;
 
@@ -22,7 +23,8 @@ namespace UnityInterface
             prefabsToManage.SetActive(false);
             ResourcesManager.prefabParent = prefabsToManage.transform;
 
-            new Harmony("imystman12.unity.interface").PatchAll();
+            harmony = new Harmony("imystman12.unity.interface");
+            harmony.PatchAll();
 
             if (this.QuickOption("Asset Logger", false))
             {

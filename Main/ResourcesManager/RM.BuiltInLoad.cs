@@ -1,8 +1,4 @@
-using System;
-using System.CodeDom.Compiler;
 using System.IO;
-using System.Reflection;
-using Microsoft.CSharp;
 using Newtonsoft.Json;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -34,32 +30,6 @@ namespace UnityInterface
             }
             metadata0 = JsonUtility.FromJson<T>(File.ReadAllText(metaPath));
             return metadata0;
-        }
-
-        internal static CSharpCodeProvider cSharpCodeProvider = new CSharpCodeProvider();
-        internal static CompilerParameters compilerParameters = new CompilerParameters()
-        {
-            GenerateInMemory = true
-        };
-        public static Type LoadComponent<T>(string scriptContent) where T : Component => LoadCodes(scriptContent).GetTypes().Where(a => typeof(T).IsAssignableFrom(a)).FirstOrDefault();
-        public static Assembly LoadCodes(string scriptContent)
-        {
-            var c = cSharpCodeProvider.CompileAssemblyFromSource(compilerParameters, scriptContent);
-            if (c.Errors.HasErrors)
-            {
-                Debug.LogError(c.Errors.ToString());
-                return null;
-            }
-            var a = c.CompiledAssembly;
-            try
-            {
-                compilerParameters.ReferencedAssemblies.Add(a.Location);
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError(ex.ToString());
-            }
-            return a;
         }
 
         public static Texture2D GetTexture2DFromPathSimple(string path)

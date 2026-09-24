@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using HarmonyLib;
 using UnityEngine;
 using UnityEngine.Events;
 
@@ -94,19 +93,44 @@ namespace UnityInterface
             return (T)(object)val;
         }
 
-        public class UnityEventConverter
+        public static UnityEvent ConvertToUnityEvent(Action action)
         {
-            public readonly UnityEvent result = new UnityEvent();
-            public static implicit operator UnityEventConverter(Action a)
-            {
-                var c = new UnityEventConverter();
-                if (a != null)
-                {
-                    c.result.AddListener(() => a.Invoke());
-                }
-                return c;
-            }
-            public static implicit operator UnityEvent(UnityEventConverter converter) => converter.result;
+            var ue = new UnityEvent();
+            ue.AddListener(() => action.Invoke());
+            return ue;
+        }
+
+        /// <summary>
+        /// Get used to it.
+        /// </summary>
+        /// <param name="unityEvent"></param>
+        /// <param name="action"></param>
+        /// <returns></returns>
+        public static UnityEvent ConvertToUnityEvent(this UnityEvent unityEvent, Action action)
+        {
+            var ue = new UnityEvent();
+            ue.AddListener(() => action.Invoke());
+            return ue;
+        }
+
+        /// <summary>
+        /// Get used to it.
+        /// </summary>
+        /// <param name="unityEvent"></param>
+        /// <param name="action"></param>
+        /// <returns></returns>
+        public static UnityEvent<T> ConvertToUnityEvent<T>(this UnityEvent unityEvent, Action<T> action)
+        {
+            var ue = new UnityEvent<T>();
+            ue.AddListener((t) => action.Invoke(t));
+            return ue;
+        }
+
+        public static UnityEvent<T> ConvertToUnityEvent<T>(Action<T> action)
+        {
+            var ue = new UnityEvent<T>();
+            ue.AddListener((t) => action.Invoke(t));
+            return ue;
         }
 
     }

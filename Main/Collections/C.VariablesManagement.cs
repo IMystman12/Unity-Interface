@@ -12,7 +12,7 @@ namespace UnityInterface
         public static object GetValue(this object obj, string name, BindingFlags flags = bindingFlagsDefault)
         {
             var t = obj.GetType();
-            var f = t.GetFieldsInfoWithParents(flags).FirstOrDefault(a => a.Name == name);
+            var f = t.GetFieldInfosWithParents(flags).FirstOrDefault(a => a.Name == name);
             if (f != null)
             {
                 return f.GetValue(obj);
@@ -26,7 +26,7 @@ namespace UnityInterface
         public static void SetValue<T>(this object obj, string name, T value, BindingFlags flags = bindingFlagsDefault)
         {
             var t = obj.GetType();
-            var f = t.GetFieldsInfoWithParents(flags).FirstOrDefault(a => a.Name == name);
+            var f = t.GetFieldInfosWithParents(flags).FirstOrDefault(a => a.Name == name);
             if (f != null)
             {
                 f.SetValue(obj, value);

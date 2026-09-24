@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using BepInEx.Logging;
+using Mono.Cecil;
 using UnityEngine;
 
 namespace UnityInterface
@@ -18,24 +20,23 @@ namespace UnityInterface
             {
                 try
                 {
-                    if (a.ContainsAttribute<SkipTypeScanning>())
+                    if (!a.ContainsAttribute<SkipTypeScanning>())
                     {
-                        continue;
-                    }
-                    if (!types.AddIfNotExsist(a))
-                    {
-                        Log(LogLevel.Warning, $"[{a}] was addend!");
-                        continue;
-                    }
-                    if (!a.IsAbstract)
-                    {
-                        if (typeof(ScriptableObject).IsAssignableFrom(a))
+                        if (!types.AddIfNotExsist(a))
                         {
-                            foundedScriptableObjectTypes.Add(a);
+                            Log(LogLevel.Warning, $"[{a}] was addend!");
+                            continue;
                         }
-                        if (typeof(IAssetLoader<>).ContainsInterface(a))
+                        if (!a.IsAbstract)
                         {
-                            a.GetConstGenericedType(typeof(IAssetLoader<>)).AddLoader((IAssetLoader<Object>)Activator.CreateInstance(a));
+                            if (typeof(ScriptableObject).IsAssignableFrom(a))
+                            {
+                                foundedScriptableObjectTypes.Add(a);
+                            }
+                            if (typeof(IAssetLoader<>).ContainsInterface(a))
+                            {
+                                ResourcesManager.AddLoader(a.GetConstGenericedType(typeof(IAssetLoader<>)), (IAssetLoader<UnityEngine.Object>)Activator.CreateInstance(a));
+                            }
                         }
                     }
                 }
@@ -49,10 +50,26 @@ namespace UnityInterface
         internal static void InjectPluginDLLs()
         {
             var array = AppDomain.CurrentDomain.GetAssemblies();
-            ResourcesManager.compilerParameters.ReferencedAssemblies.Clear();
-            ResourcesManager.compilerParameters.ReferencedAssemblies.AddRange(array.Select(a => a.Location).ToArray().UniqueCheck());
-            AddType(array.SelectMany(a => a.GetTypes()).ToArray().UniqueCheck());
-            Log(LogLevel.Info, $"Founded total types count: {types.Count} and ScriptableObject types count: {foundedScriptableObjectTypes.Count}!");
+
+            AddType(array.SelectMany(a =>
+            {
+                try
+                {
+                    return a.GetTypes().NullRemoval();
+                }
+                catch (ReflectionTypeLoadException rx)
+                {
+                    Log(LogLevel.Error, $"[{a.FullName}] tried to get types but some of them were wrong! Exception: {rx.ToString()}");
+                    return rx.Types.NullRemoval();
+                }
+                catch (Exception ex)
+                {
+                    Log(LogLevel.Error, $"[{a.FullName}] tried to get types but errors! Exception: {ex.ToString()}");
+                    return Array.Empty<Type>();
+                }
+            }).ToArray().UniqueCheck());
+
+            Log(LogLevel.Info, $"Founded types count: {types.Count} and scriptableObject types count: {foundedScriptableObjectTypes.Count}!");
         }
     }
 }

@@ -17,6 +17,10 @@ namespace UnityInterface
     {
     }
 
+    public class SkipAseetBundleScanning : Attribute
+    {
+    }
+
     public static partial class PluginManager
     {
         /// <summary>

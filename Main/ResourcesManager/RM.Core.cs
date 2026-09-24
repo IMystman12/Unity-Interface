@@ -54,7 +54,7 @@ namespace UnityInterface
                 Log(LogLevel.Warning, $"[{type.Name}] [{asset.GetInstanceID()}] {asset.name} Only supports unique names for each type! But you have copies!");
             }
         }
-        internal static void AddLoader(this Type assetType, IAssetLoader<Object> loader)
+        internal static void AddLoader(Type assetType, IAssetLoader<Object> loader)
         {
             if (!assetLoaders.ContainsKey(assetType))
             {

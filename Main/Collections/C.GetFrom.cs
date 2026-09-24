@@ -9,7 +9,7 @@ namespace UnityInterface
     {
         public static void StartGetFroms(this Component component, BindingFlags flags = bindingFlagsForMerge)
         {
-            var arrayField = component.GetType().GetFieldsInfoWithParents(flags);
+            var arrayField = component.GetType().GetFieldInfosWithParents(flags);
             foreach (var a in arrayField)
             {
                 foreach (var b in a.GetCustomAttributes<GetFromBase>())
