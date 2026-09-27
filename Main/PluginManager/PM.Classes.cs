@@ -17,7 +17,7 @@ namespace UnityInterface
     {
     }
 
-    public class SkipAseetBundleScanning : Attribute
+    public class SkipAssetBundleScanning : Attribute
     {
     }
 

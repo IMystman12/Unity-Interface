@@ -18,7 +18,7 @@ namespace UnityInterface
         {
             List<MethodInfo> result = new List<MethodInfo>();
             (Type, BindingFlags) key = (type, flags);
-            if (!fieldsCache.ContainsKey(key))
+            if (!methodsCache.ContainsKey(key))
             {
                 while (type != null && type != typeof(UnityEngine.Object) && type != typeof(object))
                 {
@@ -29,6 +29,6 @@ namespace UnityInterface
             }
             return methodsCache[key];
         }
-        public static List<string> GetMethodsWithParents(this Type type, BindingFlags flags = bindingFlagsForParents) => type.GetFieldInfosWithParents(flags).Select(a => a.Name).ToList();
+        public static List<string> GetMethodsWithParents(this Type type, BindingFlags flags = bindingFlagsForParents) => type.GetMethodInfosWithParents(flags).Select(a => a.Name).ToList();
     }
 }
